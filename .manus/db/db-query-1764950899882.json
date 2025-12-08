@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE products SET imageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663233691307/jtkmmypZyBGuTCAb.jpg' WHERE name = 'Complete Sticker Collection - 6 Pack';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3T1zJ51LUnRwksr.root --database PRLTv39ySLt5ijTYKqCuQo --execute UPDATE products SET imageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663233691307/jtkmmypZyBGuTCAb.jpg' WHERE name = 'Complete Sticker Collection - 6 Pack';",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 67
-}

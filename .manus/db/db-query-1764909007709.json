@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE events e\nJOIN locations l ON e.locationId = l.id\nSET e.price = 7500\nWHERE l.type = 'resort';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3T1zJ51LUnRwksr.root --database PRLTv39ySLt5ijTYKqCuQo --execute UPDATE events e\nJOIN locations l ON e.locationId = l.id\nSET e.price = 7500\nWHERE l.type = 'resort';",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 132
-}

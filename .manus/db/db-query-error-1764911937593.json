@@ -1,8 +1,0 @@
-{
-  "query": "\n-- First, insert Tempe Town Lake location if it doesn't exist\nINSERT INTO locations (name, address, city, state, zip_code, region, created_at, updated_at)\nSELECT 'Tempe Town Lake Marina', '550 E Tempe Town Lake, Tempe, AZ 85288', 'Tempe', 'AZ', '85288', 'Phoenix Area', NOW(), NOW()\nWHERE NOT EXISTS (SELECT 1 FROM locations WHERE name = 'Tempe Town Lake Marina');\n\n-- Get the location ID\nSELECT id FROM locations WHERE name = 'Tempe Town Lake Marina';\n",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3T1zJ51LUnRwksr.root --database PRLTv39ySLt5ijTYKqCuQo --execute \n-- First, insert Tempe Town Lake location if it doesn't exist\nINSERT INTO locations (name, address, city, state, zip_code, region, created_at, updated_at)\nSELECT 'Tempe Town Lake Marina', '550 E Tempe Town Lake, Tempe, AZ 85288', 'Tempe', 'AZ', '85288', 'Phoenix Area', NOW(), NOW()\nWHERE NOT EXISTS (SELECT 1 FROM locations WHERE name = 'Tempe Town Lake Marina');\n\n-- Get the location ID\nSELECT id FROM locations WHERE name = 'Tempe Town Lake Marina';\n",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 3: Unknown column 'zip_code' in 'field list'"
-  ]
-}

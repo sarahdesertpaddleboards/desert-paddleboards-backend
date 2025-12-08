@@ -1,8 +1,0 @@
-{
-  "query": "SELECT e.id, e.title, e.price, l.name as location_name \nFROM events e \nJOIN locations l ON e.location_id = l.id \nORDER BY l.name, e.title;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3T1zJ51LUnRwksr.root --database PRLTv39ySLt5ijTYKqCuQo --execute SELECT e.id, e.title, e.price, l.name as location_name \nFROM events e \nJOIN locations l ON e.location_id = l.id \nORDER BY l.name, e.title;",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 1: Unknown column 'e.location_id' in 'on clause'"
-  ]
-}
