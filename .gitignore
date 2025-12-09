@@ -1,0 +1,29 @@
+# Node
+node_modules/
+npm-debug.log
+pnpm-debug.log
+
+# Env
+.env
+.env.local
+.env.production
+.env.development
+
+# Drizzle
+drizzle.config.json
+drizzle/*
+!drizzle/*.sql
+
+# Build output
+dist/
+tmp/
+.cache/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Misc
+.vscode/
