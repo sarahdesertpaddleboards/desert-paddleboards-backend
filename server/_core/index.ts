@@ -1,15 +1,27 @@
 import "dotenv/config";
 import express from "express";
+import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { nodeHTTPRequestHandler } from "@trpc/server/adapters/node-http";
-import { registerOAuthRoutes } from "./oauth";
+import { adminOrdersRouter } from "../routers/admin-orders";
+import { adminAuthRouter } from "../routers/admin-auth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { adminProductsRouter } from "../routers/admin-products";
+import { productsRouter } from "../routers/products";
+import { checkoutRouter } from "../routers/checkout";
+import { downloadRouter } from "../routers/downloads";
+
+console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 
 async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // ✅ MUST be first
+  app.use(cookieParser());
+
+  // Stripe webhook (must come before express.json)
   const { handleStripeWebhook } = await import("../stripe-webhook");
 
   app.post(
@@ -18,11 +30,24 @@ async function startServer() {
     handleStripeWebhook
   );
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+ // Standard middleware
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  registerOAuthRoutes(app);
+console.log("🔥 REGISTERING ADMIN ROUTES 🔥");
+app.use("/admin", adminAuthRouter);
 
+// ✅ ADD THIS
+console.log("🔥 REGISTERING CHECKOUT ROUTES 🔥");
+app.use("/checkout", checkoutRouter);
+
+  app.use("/admin/products", adminProductsRouter);
+  app.use("/admin/orders", adminOrdersRouter);
+  app.use("/products", productsRouter);
+  app.use("/downloads", downloadRouter);
+
+  
+  // tRPC handler
   app.use("/api/trpc/:path", (req, res) => {
     const procedure = req.params.path;
 
@@ -51,7 +76,14 @@ async function startServer() {
   });
 
   const port = parseInt(process.env.PORT || "3000", 10);
+// Temporary Stripe redirect test routes
+app.get("/success", (_req, res) => {
+  res.send("✅ Payment successful – Stripe redirect works");
+});
 
+app.get("/cancel", (_req, res) => {
+  res.send("❌ Payment cancelled");
+});
   server.listen(port, () => {
     console.log(`Server running on port ${port}`);
   });

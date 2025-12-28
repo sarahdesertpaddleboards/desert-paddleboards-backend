@@ -1,5 +1,5 @@
-import { db } from "./db";
-import { adminUsers } from "./schema";
+import { db } from "../db.ts";
+import { adminUsers } from "./schema.ts";
 import bcrypt from "bcryptjs";
 
 async function main() {
