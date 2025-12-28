@@ -29,12 +29,19 @@ checkoutRouter.post("/create", async (req, res) => {
 
     console.log("CHECKOUT productKey:", productKey);
     console.log("CHECKOUT merged product keys:", products.map(p => p.key));
-    
+    console.log(
+      "CHECKOUT keys:",
+      mergeProducts(overrides).map(p => p.key)
+    );   
     const product = products.find((p) => p.key === productKey);
 
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
+
+    const PUBLIC_SITE_URL =
+  process.env.PUBLIC_SITE_URL || "http://localhost:3000";
+
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -52,16 +59,21 @@ checkoutRouter.post("/create", async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.PUBLIC_SITE_URL}/success`,
-      cancel_url: `${process.env.PUBLIC_SITE_URL}/cancel`,
+      success_url: `${PUBLIC_SITE_URL}/success`,
+      cancel_url: `${PUBLIC_SITE_URL}/cancel`,
+      
       metadata: {
         productKey: product.key,
       },
     });
 
     return res.json({ url: session.url });
-  } catch (err) {
+  } catch (err: any) {
     console.error("CHECKOUT CREATE ERROR", err);
-    return res.status(500).json({ error: "Checkout failed" });
+  
+    return res.status(500).json({
+      error: "Checkout failed",
+      stripeError: err?.message || err,
+    });
   }
 });
