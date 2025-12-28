@@ -81,6 +81,18 @@ app.get("/success", (_req, res) => {
   res.send("✅ Payment successful – Stripe redirect works");
 });
 
+ // 🔍 TEMPORARY HEALTH CHECK (DEBUG ONLY)
+ app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    env: {
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
+      DOWNLOAD_WORKER_SECRET: !!process.env.DOWNLOAD_WORKER_SECRET,
+    },
+  });
+});
+
 app.get("/cancel", (_req, res) => {
   res.send("❌ Payment cancelled");
 });
