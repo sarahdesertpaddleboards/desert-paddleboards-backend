@@ -10,7 +10,9 @@ import { createContext } from "./context";
 import { adminProductsRouter } from "../routers/admin-products";
 import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
-import { downloadRouter } from "../routers/downloads";
+
+import { downloadsRouter } from "../downloads/downloads.router";
+
 
 console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 
@@ -44,8 +46,8 @@ app.use("/checkout", checkoutRouter);
   app.use("/admin/products", adminProductsRouter);
   app.use("/admin/orders", adminOrdersRouter);
   app.use("/products", productsRouter);
-  app.use("/downloads", downloadRouter);
 
+  app.use("/downloads", downloadsRouter);
   
   // tRPC handler
   app.use("/api/trpc/:path", (req, res) => {
