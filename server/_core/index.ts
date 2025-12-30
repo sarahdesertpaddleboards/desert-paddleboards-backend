@@ -12,7 +12,6 @@ import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
 import { downloadsWorkerRouter } from "../routers/downloads.worker.router";
 import { downloadsRouter } from "../downloads/downloads.router";
-import { checkoutSuccessRouter } from "../routers/checkout-success";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { purchases } from "../db/schema";
@@ -44,15 +43,14 @@ app.use("/admin", adminAuthRouter);
 
 // ✅ ADD THIS
 console.log("🔥 REGISTERING CHECKOUT ROUTES 🔥");
-app.use("/checkout", checkoutRouter);
 
   app.use("/admin/products", adminProductsRouter);
   app.use("/admin/orders", adminOrdersRouter);
   app.use("/products", productsRouter);
   app.use("/routers", downloadsWorkerRouter);
   app.use("/downloads", downloadsRouter);
-  app.use("/checkout", checkoutSuccessRouter);
-  
+  app.use("/checkout", checkoutRouter);
+
   // tRPC handler
   app.use("/api/trpc/:path", (req, res) => {
     const procedure = req.params.path;
