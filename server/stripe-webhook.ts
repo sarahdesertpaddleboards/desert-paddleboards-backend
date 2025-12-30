@@ -73,12 +73,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       productKey,
       amount: session.amount_total!,
       currency: session.currency!,
-      status: "paid",
+      status: "fulfilled", // 👈 IMPORTANT
       customerEmail: session.customer_details?.email ?? null,
       stripeEventId: event.id,
       raw: session,
+      fulfilledAt: new Date(),
     });
-// ✅ Create purchase for digital / downloadable products
+    
+    // ✅ Create purchase for digital / downloadable products
 await db.insert(purchases).values({
   stripeSessionId: session.id,
   productKey,
