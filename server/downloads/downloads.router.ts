@@ -49,7 +49,7 @@ downloadsRouter.get("/:purchaseId", async (req, res) => {
     const order = await db
       .select()
       .from(orders)
-      .where(eq(orders.id, purchase.orderId))
+      .where(eq(orders.id, purchase.stripeSessionId))
       .limit(1)
       .then(r => r[0]);
 
