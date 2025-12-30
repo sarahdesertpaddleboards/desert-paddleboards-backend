@@ -59,7 +59,8 @@ checkoutRouter.post("/create", async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${PUBLIC_SITE_URL}/success`,
+      success_url: `${PUBLIC_SITE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+
       cancel_url: `${PUBLIC_SITE_URL}/cancel`,
       
       metadata: {
