@@ -5,44 +5,18 @@ import { orders, purchases, productOverrides } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { mergeProducts } from "../products/mergeProducts";
 
-/**
- * ============================================================
- * CHECKOUT ROUTER
- * ============================================================
- *
- * Responsibilities:
- *  - Create Stripe Checkout sessions
- *  - Expose checkout success data to frontend
- *
- * This router does NOT:
- *  - Serve HTML
- *  - Handle file downloads
- *  - Perform fulfillment (handled by webhook)
- */
-
-export const checkoutRouter = Router();
-
-/**
- * ------------------------------------------------------------
- * Stripe client
- * ------------------------------------------------------------
- * Uses the same secret key as the webhook
- */
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 });
 
+export const checkoutRouter = Router();
+
 /**
- * ------------------------------------------------------------
+ * ============================================================
+ * CREATE STRIPE CHECKOUT SESSION
+ * ============================================================
+ *
  * POST /checkout/create
- * ------------------------------------------------------------
- *
- * Called by frontend when user clicks "Buy"
- *
- * Responsibilities:
- *  - Validate productKey
- *  - Create Stripe Checkout Session
- *  - Return redirect URL
  */
 checkoutRouter.post("/create", async (req, res) => {
   try {
@@ -52,9 +26,7 @@ checkoutRouter.post("/create", async (req, res) => {
       return res.status(400).json({ error: "Missing productKey" });
     }
 
-    /**
-     * Load product catalog (base products + DB overrides)
-     */
+    // Load product catalog (base + overrides)
     const overrides = await db.select().from(productOverrides);
     const products = mergeProducts(overrides);
 
@@ -64,20 +36,11 @@ checkoutRouter.post("/create", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    /**
-     * PUBLIC_SITE_URL determines where Stripe redirects the browser
-     *
-     * - Railway: set this env var to https://desertpaddleboards.com
-     * - Local dev: fallback to http://localhost:3000
-     *
-     * The backend should NEVER hardcode domains.
-     */
-    const PUBLIC_SITE_URL =
-      process.env.PUBLIC_SITE_URL || "http://localhost:3000";
+    const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
+    if (!PUBLIC_SITE_URL) {
+      throw new Error("PUBLIC_SITE_URL not set");
+    }
 
-    /**
-     * Create Stripe Checkout Session
-     */
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -101,42 +64,27 @@ checkoutRouter.post("/create", async (req, res) => {
       },
     });
 
-    /**
-     * Frontend will redirect user to this URL
-     */
     return res.json({ url: session.url });
   } catch (err: any) {
     console.error("CHECKOUT CREATE ERROR", err);
-
-    return res.status(500).json({
-      error: "Checkout failed",
-      stripeError: err?.message || err,
-    });
+    return res.status(500).json({ error: "Checkout failed" });
   }
 });
 
 /**
- * ------------------------------------------------------------
+ * ============================================================
+ * CHECKOUT SUCCESS DATA
+ * ============================================================
+ *
  * GET /checkout/success/:sessionId
- * ------------------------------------------------------------
  *
- * Called by:
- *  - Frontend success page
- *
- * Responsibilities:
- *  - Load order created by Stripe webhook
- *  - Load purchases linked to that order
- *  - Return delivery instructions
- *
- * This endpoint is READ-ONLY.
+ * Called by frontend success page
  */
 checkoutRouter.get("/success/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    /**
-     * 1️⃣ Load order by Stripe session ID
-     */
+    // 1️⃣ Load order
     const order = await db
       .select()
       .from(orders)
@@ -148,24 +96,18 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    /**
-     * 2️⃣ Load purchases linked to this order
-     */
+    // 2️⃣ Load purchases linked to this order
     const orderPurchases = await db
       .select()
       .from(purchases)
-      .where(eq(purchases.stripeSessionId, sessionId));
+      .where(eq(purchases.stripe_session_id, sessionId));
 
-    /**
-     * 3️⃣ Map purchases into delivery instructions
-     *
-     * This keeps frontend logic simple and generic.
-     */
+    // 3️⃣ Map to delivery model
     const deliveries = orderPurchases.map(p => {
       let type: "digital" | "gift" | "booking" = "digital";
 
       if (p.product_key.includes("GIFT")) type = "gift";
-      if (p.product_key.includes("BOOKING")) type = "booking";
+      if (p.product_key.includes("CLASS")) type = "booking";
 
       return {
         purchaseId: p.id,
@@ -174,9 +116,6 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       };
     });
 
-    /**
-     * 4️⃣ Respond
-     */
     return res.json({
       sessionId,
       customerEmail: order.customer_email,
