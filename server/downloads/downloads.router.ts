@@ -16,7 +16,7 @@ export const downloadsRouter = Router();
  *
  * Responsibilities:
  *  - Verify the purchase exists
- *  - Verify the order was fulfilled
+ *  - Verify the related order was fulfilled
  *  - Redirect the browser to the Cloudflare Worker
  *
  * IMPORTANT:
@@ -25,11 +25,17 @@ export const downloadsRouter = Router();
  */
 downloadsRouter.get("/:purchaseId", async (req, res) => {
   try {
-    const { purchaseId } = req.params;
+    const purchaseId = Number(req.params.purchaseId);
+
+    if (Number.isNaN(purchaseId)) {
+      return res.status(400).send("Invalid purchase id");
+    }
 
     /**
      * 1️⃣ Load purchase record
-     * Represents "someone bought something"
+     *
+     * purchases.id = INTERNAL entitlement ID
+     * This represents "someone is allowed to download something"
      */
     const purchase = await db
       .select()
@@ -44,7 +50,12 @@ downloadsRouter.get("/:purchaseId", async (req, res) => {
 
     /**
      * 2️⃣ Load related order
-     * Represents "payment completed + fulfilled"
+     *
+     * CRITICAL:
+     * - orders.id === Stripe session ID
+     * - purchases.stripe_session_id stores that value
+     *
+     * This represents "money was paid AND fulfilled"
      */
     const order = await db
       .select()
@@ -58,12 +69,12 @@ downloadsRouter.get("/:purchaseId", async (req, res) => {
     }
 
     /**
-     * 3️⃣ Redirect to Cloudflare Worker
+     * 3️⃣ Redirect browser to Cloudflare Worker
      *
-     * The Worker will:
-     *  - Call BACK to the backend
-     *  - Re-verify this purchase
-     *  - Stream the file from R2
+     * The Worker:
+     *  - Does NOT trust the browser
+     *  - Will call back to /downloads/verify/:purchaseId
+     *  - Will stream the file from R2
      */
     const workerBaseUrl = process.env.DOWNLOAD_WORKER_URL;
 
@@ -76,7 +87,7 @@ downloadsRouter.get("/:purchaseId", async (req, res) => {
 
     return res.redirect(workerUrl);
   } catch (err) {
-    console.error("DOWNLOAD ERROR", err);
+    console.error("DOWNLOAD ENTRY ERROR", err);
     return res.status(500).send("Download unavailable");
   }
 });
@@ -93,7 +104,8 @@ downloadsRouter.get("/:purchaseId", async (req, res) => {
  *
  * Responsibilities:
  *  - Authenticate the Worker (shared secret)
- *  - Verify purchase + fulfilled order
+ *  - Verify purchase exists
+ *  - Verify related order is fulfilled
  *  - Map product → R2 object key
  *  - Return metadata so the Worker can stream the file
  */
@@ -101,7 +113,9 @@ downloadsRouter.get("/verify/:purchaseId", async (req, res) => {
   try {
     /**
      * 1️⃣ Authenticate Worker
-     * Shared secret prevents public access
+     *
+     * Shared secret prevents public abuse.
+     * Only the Worker knows this value.
      */
     const workerSecret = req.header("x-worker-secret");
 
@@ -112,7 +126,11 @@ downloadsRouter.get("/verify/:purchaseId", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized worker" });
     }
 
-    const { purchaseId } = req.params;
+    const purchaseId = Number(req.params.purchaseId);
+
+    if (Number.isNaN(purchaseId)) {
+      return res.status(400).json({ error: "Invalid purchase id" });
+    }
 
     /**
      * 2️⃣ Load purchase
@@ -129,12 +147,16 @@ downloadsRouter.get("/verify/:purchaseId", async (req, res) => {
     }
 
     /**
-     * 3️⃣ Load order and verify fulfillment
+     * 3️⃣ Load order USING Stripe session ID
+     *
+     * This was the bug earlier:
+     * - You must join via purchases.stripe_session_id
+     * - NOT via purchase.id
      */
     const order = await db
       .select()
       .from(orders)
-      .where(eq(orders.id, purchase.orderId))
+      .where(eq(orders.id, purchase.stripeSessionId))
       .limit(1)
       .then(r => r[0]);
 
@@ -144,7 +166,11 @@ downloadsRouter.get("/verify/:purchaseId", async (req, res) => {
 
     /**
      * 4️⃣ Map product → R2 object key
-     * Explicit mapping keeps delivery deterministic
+     *
+     * This mapping is explicit on purpose:
+     * - No guessing
+     * - No dynamic filenames
+     * - No accidental cross-delivery
      */
     const objectKeyByProduct: Record<string, string> = {
       SONORAN_ECHOES_DIGITAL: "sonoran-echoes.zip",
@@ -162,7 +188,10 @@ downloadsRouter.get("/verify/:purchaseId", async (req, res) => {
 
     /**
      * 5️⃣ Respond to Worker
-     * The Worker will stream the file from R2
+     *
+     * The Worker will now:
+     *  - Fetch this objectKey from R2
+     *  - Stream it to the user
      */
     return res.json({
       ok: true,
