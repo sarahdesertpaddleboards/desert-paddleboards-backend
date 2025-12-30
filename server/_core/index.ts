@@ -12,7 +12,7 @@ import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
 import { downloadsWorkerRouter } from "../routers/downloads.worker.router";
 import { downloadsRouter } from "../downloads/downloads.router";
-
+import { checkoutSuccessRouter } from "../routers/checkout-success";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { purchases } from "../db/schema";
@@ -51,6 +51,7 @@ app.use("/checkout", checkoutRouter);
   app.use("/products", productsRouter);
   app.use("/routers", downloadsWorkerRouter);
   app.use("/downloads", downloadsRouter);
+  app.use("/checkout", checkoutSuccessRouter);
   
   // tRPC handler
   app.use("/api/trpc/:path", (req, res) => {
@@ -81,7 +82,7 @@ app.use("/checkout", checkoutRouter);
   });
 
   const port = parseInt(process.env.PORT || "3000", 10);
-  
+
   app.get("/success", async (req, res) => {
     try {
       const sessionId = req.query.session_id as string | undefined;
