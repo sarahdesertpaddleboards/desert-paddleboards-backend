@@ -73,18 +73,27 @@ checkoutRouter.post("/create", async (req, res) => {
 
 /**
  * ============================================================
- * CHECKOUT SUCCESS DATA
+ * CHECKOUT SUCCESS DATA ENDPOINT
  * ============================================================
  *
  * GET /checkout/success/:sessionId
  *
- * Called by frontend success page
+ * Called by:
+ *  - Frontend success page
+ *
+ * Responsibilities:
+ *  - Load order by Stripe session ID
+ *  - Load purchases linked to that session
+ *  - Return delivery instructions
  */
 checkoutRouter.get("/success/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    // 1️⃣ Load order by Stripe session ID
+    /**
+     * 1️⃣ Load order
+     * orders.id === Stripe Checkout Session ID
+     */
     const order = await db
       .select()
       .from(orders)
@@ -96,30 +105,40 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // 2️⃣ Load purchases linked to this Stripe session
+    /**
+     * 2️⃣ Load purchases linked to this checkout
+     * purchases.stripeSessionId === orders.id
+     */
     const orderPurchases = await db
       .select()
       .from(purchases)
-      .where(eq(purchases.stripe_session_id, sessionId));
+      .where(eq(purchases.stripeSessionId, sessionId));
 
-    // 3️⃣ Map purchases → delivery model
+    /**
+     * 3️⃣ Map purchases into delivery objects
+     */
     const deliveries = orderPurchases.map(p => {
       let type: "digital" | "gift" | "booking" = "digital";
 
-      if (p.product_key.includes("GIFT")) type = "gift";
-      if (p.product_key.includes("CLASS")) type = "booking";
+      if (p.productKey.includes("GIFT")) type = "gift";
+      if (p.productKey.includes("SOUNDBATH") || p.productKey.includes("CLASS")) {
+        type = "booking";
+      }
 
       return {
         purchaseId: p.id,
-        productKey: p.product_key,
+        productKey: p.productKey,
         type,
       };
     });
 
-    // 4️⃣ Respond with data the frontend needs
+    /**
+     * 4️⃣ Respond with structured data
+     */
     return res.json({
       sessionId,
-      customerEmail: order.customer_email,
+      status: order.status,
+      customerEmail: order.customerEmail,
       deliveries,
     });
   } catch (err) {
@@ -127,3 +146,4 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
     return res.status(500).json({ error: "Unable to load order" });
   }
 });
+
