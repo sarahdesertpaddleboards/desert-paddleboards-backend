@@ -84,7 +84,7 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    // 1️⃣ Load order
+    // 1️⃣ Load order by Stripe session ID
     const order = await db
       .select()
       .from(orders)
@@ -96,13 +96,13 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // 2️⃣ Load purchases linked to this order
+    // 2️⃣ Load purchases linked to this Stripe session
     const orderPurchases = await db
       .select()
       .from(purchases)
       .where(eq(purchases.stripe_session_id, sessionId));
 
-    // 3️⃣ Map to delivery model
+    // 3️⃣ Map purchases → delivery model
     const deliveries = orderPurchases.map(p => {
       let type: "digital" | "gift" | "booking" = "digital";
 
@@ -116,6 +116,7 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       };
     });
 
+    // 4️⃣ Respond with data the frontend needs
     return res.json({
       sessionId,
       customerEmail: order.customer_email,
