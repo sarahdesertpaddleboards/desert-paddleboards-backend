@@ -14,6 +14,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 /**
  * Stripe Webhook Handler
+ * ----------------------
  * Called ONLY by Stripe
  * Uses express.raw() upstream
  */
@@ -27,7 +28,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   let event: Stripe.Event;
 
   /**
-   * 1. Verify authenticity
+   * 1️⃣ Verify webhook signature (security)
    */
   try {
     event = stripe.webhooks.constructEvent(
@@ -41,105 +42,98 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   /**
-   * 2. Idempotency guard
+   * 2️⃣ Global idempotency guard
+   * We NEVER process the same Stripe event twice
    */
-  const existing = await db
+  const existingEvent = await db
     .select()
     .from(orders)
     .where(eq(orders.stripeEventId, event.id))
-    .limit(1);
+    .limit(1)
+    .then(r => r[0]);
 
-  if (existing.length > 0) {
+  if (existingEvent) {
     console.log("🔁 Duplicate webhook ignored:", event.id);
     return res.json({ received: true });
   }
 
   /**
-   * 3. Handle successful checkout
+   * 3️⃣ Handle successful checkout
    */
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
     const productKey = session.metadata?.productKey;
     if (!productKey) {
-      console.error("❌ Missing productKey");
+      console.error("❌ Missing productKey on session");
       return res.status(400).end();
     }
 
     /**
-     * 4. Record the order (money received)
+     * 4️⃣ Create ORDER record
+     * Represents money received + Stripe confirmation
      */
     await db.insert(orders).values({
-      id: session.id,
+      id: session.id, // Stripe session ID
       productKey,
       amount: session.amount_total!,
       currency: session.currency!,
-      status: "fulfilled", // 👈 IMPORTANT
+      status: "fulfilled",
       customerEmail: session.customer_details?.email ?? null,
       stripeEventId: event.id,
       raw: session,
       fulfilledAt: new Date(),
     });
-    
-    // ✅ Create purchase for digital / downloadable products
-await db.insert(purchases).values({
-  stripeSessionId: session.id,
-  productKey,
-  amount: session.amount_total!,
-  currency: session.currency!,
-  customerEmail: session.customer_details?.email ?? null,
-});
-    /**
-     * 5. Create a purchase record
-     * This represents entitlement to delivery
-     */
-    await db.insert(purchases).values({
-      stripeSessionId: session.id,
-      productKey,
-      amount: session.amount_total!,
-      currency: session.currency!,
-      customerEmail: session.customer_details?.email ?? null,
-    });
-    /**
-     * 6. Mark order fulfilled
-     * (Delivery UX will pick up from purchases)
-     */
-    await db
-      .update(orders)
-      .set({
-        status: "fulfilled",
-        fulfilledAt: new Date(),
-      })
-      .where(eq(orders.id, session.id));
-/**
- * 6️⃣ Send confirmation email
- * This is fire-and-forget on purpose.
- * Email failure must NOT block webhook success.
- */
-try {
-  const order = {
-    id: session.id,
-    customerEmail: session.customer_details?.email ?? null,
-  };
 
-  const orderPurchases = await db
-    .select()
-    .from(purchases)
-    .where(eq(purchases.stripeSessionId, session.id));
+    /**
+     * 5️⃣ Create PURCHASE record (IDEMPOTENT)
+     * Represents entitlement to delivery
+     * Stripe may retry the webhook, so we must check first
+     */
+    const existingPurchase = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.stripeSessionId, session.id))
+      .limit(1)
+      .then(r => r[0]);
 
-  await sendOrderConfirmationEmail({
-    order,
-    purchases: orderPurchases,
-  });
-} catch (err) {
-  console.error("EMAIL ERROR (non-blocking)", err);
-}
+    if (!existingPurchase) {
+      await db.insert(purchases).values({
+        stripeSessionId: session.id,
+        productKey,
+        amount: session.amount_total!,
+        currency: session.currency!,
+        customerEmail: session.customer_details?.email ?? null,
+      });
+    }
+
+    /**
+     * 6️⃣ Send confirmation email (NON-BLOCKING)
+     * Email failure must NEVER break webhook success
+     */
+    try {
+      const orderPurchases = await db
+        .select()
+        .from(purchases)
+        .where(eq(purchases.stripeSessionId, session.id));
+
+      await sendOrderConfirmationEmail({
+        order: {
+          id: session.id,
+          customerEmail: session.customer_details?.email ?? null,
+        },
+        purchases: orderPurchases,
+      });
+    } catch (err) {
+      console.error("📧 EMAIL ERROR (non-blocking)", err);
+    }
 
     console.log("✅ Order fulfilled:", session.id);
   }
 
   /**
-   * 7. Always acknowledge
+   * 7️⃣ Always acknowledge webhook
+   * Stripe only cares about a 200 OK
    */
-  res.json({ received: true });
+  return res.json({ received: true });
 }
