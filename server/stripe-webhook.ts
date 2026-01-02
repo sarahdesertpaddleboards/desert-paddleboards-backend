@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { db } from "./db";
 import { orders, purchases } from "./db/schema";
 import { eq } from "drizzle-orm";
+import { sendOrderConfirmationEmail } from "./_core/email";
 
 /**
  * Stripe client
@@ -110,6 +111,29 @@ await db.insert(purchases).values({
         fulfilledAt: new Date(),
       })
       .where(eq(orders.id, session.id));
+/**
+ * 6️⃣ Send confirmation email
+ * This is fire-and-forget on purpose.
+ * Email failure must NOT block webhook success.
+ */
+try {
+  const order = {
+    id: session.id,
+    customerEmail: session.customer_details?.email ?? null,
+  };
+
+  const orderPurchases = await db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.stripeSessionId, session.id));
+
+  await sendOrderConfirmationEmail({
+    order,
+    purchases: orderPurchases,
+  });
+} catch (err) {
+  console.error("EMAIL ERROR (non-blocking)", err);
+}
 
     console.log("✅ Order fulfilled:", session.id);
   }
