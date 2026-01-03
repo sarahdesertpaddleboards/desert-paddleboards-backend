@@ -8,17 +8,26 @@ import { sdk } from "../_core/sdk";
 export const adminProductsRouter = Router();
 
 /**
+ * ============================================================
  * GET /admin/products
- * Return canonical products merged with ACTIVE overrides
+ *
+ * Admin-only endpoint.
+ *
+ * Returns ALL products with admin-controllable fields merged:
+ * - active
+ * - price
+ * - type
+ *
+ * Base product data (name, description, currency) always
+ * comes from PRODUCTS and is not editable here.
+ * ============================================================
  */
 adminProductsRouter.get("/", async (req, res) => {
   try {
     await sdk.requireAdmin(req);
 
-    const overrides = await db
-      .select()
-      .from(productOverrides)
-      .where(eq(productOverrides.active, true));
+    // Load ALL overrides (active + inactive)
+    const overrides = await db.select().from(productOverrides);
 
     const overridesByKey = new Map(
       overrides.map(o => [o.productKey, o])
@@ -29,13 +38,16 @@ adminProductsRouter.get("/", async (req, res) => {
         const override = overridesByKey.get(key);
 
         return {
-          key,
-          name: override?.name ?? base.name,
-          description: override?.description ?? base.description,
-          price: override?.price ?? base.price,
+          productKey: key,
+          name: base.name,
+          description: base.description,
           currency: base.currency,
-          type: base.type,
+
+          // Admin-controlled fields
           active: override?.active ?? true,
+          price: override?.price ?? base.price,
+          type: override?.type ?? base.type ?? null,
+
           hasOverride: Boolean(override),
         };
       }
@@ -49,26 +61,35 @@ adminProductsRouter.get("/", async (req, res) => {
 });
 
 /**
- * POST /admin/products/:key
- * Create or update a product override
+ * ============================================================
+ * POST /admin/products/:productKey
+ *
+ * Create or update a product override.
+ *
+ * Allowed fields:
+ * - active
+ * - price
+ * - type
+ *
+ * This uses UPSERT so admins can safely edit repeatedly.
+ * ============================================================
  */
-adminProductsRouter.post("/:key", async (req, res) => {
+adminProductsRouter.post("/:productKey", async (req, res) => {
   try {
     await sdk.requireAdmin(req);
 
-    const productKey = req.params.key as ProductKey;
+    const productKey = req.params.productKey as ProductKey;
 
     if (!(productKey in PRODUCTS)) {
       return res.status(404).json({ error: "Invalid product key" });
     }
 
-    const { name, description, price, active } = req.body ?? {};
+    const { active, price, type } = req.body ?? {};
 
     if (
-      name === undefined &&
-      description === undefined &&
+      active === undefined &&
       price === undefined &&
-      active === undefined
+      type === undefined
     ) {
       return res.status(400).json({ error: "No fields provided" });
     }
@@ -77,17 +98,15 @@ adminProductsRouter.post("/:key", async (req, res) => {
       .insert(productOverrides)
       .values({
         productKey,
-        name,
-        description,
-        price,
         active,
+        price,
+        type,
       })
       .onDuplicateKeyUpdate({
         set: {
-          name,
-          description,
-          price,
           active,
+          price,
+          type,
         },
       });
 
