@@ -3,7 +3,11 @@ import bcrypt from "bcryptjs";
 import { db } from "../db";
 import { adminUsers } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { sdk } from "../_core/sdk";
+import {
+  createAdminSession,
+  clearAdminSession,
+} from "../_core/sdk";
+
 
 export const adminAuthRouter = Router();
 
@@ -64,10 +68,11 @@ adminAuthRouter.post("/login", async (req, res) => {
       hasJwtSecret: Boolean(process.env.JWT_SECRET),
       hasCookieSecret: Boolean(process.env.COOKIE_SECRET),
     });
-    await sdk.createAdminSession(res, {
+    await createAdminSession(res, {
       adminId: admin.id,
       email: admin.email,
     });
+    
 
     return res.json({ success: true });
   } catch (err) {
@@ -80,6 +85,6 @@ adminAuthRouter.post("/login", async (req, res) => {
  * POST /admin/logout
  */
 adminAuthRouter.post("/logout", async (_req, res) => {
-  sdk.clearAdminSession(res);
+  clearAdminSession(res);
   return res.json({ success: true });
 });

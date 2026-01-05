@@ -1,7 +1,7 @@
 import { AXIOS_TIMEOUT_MS, COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import { parse as parseCookieHeader } from "cookie";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import { ENV } from "./env";
 
@@ -18,6 +18,9 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 class SDKServer {
   private getSessionSecret() {
+    if (!ENV.cookieSecret) {
+      throw new Error("COOKIE_SECRET is not set");
+    }
     return new TextEncoder().encode(ENV.cookieSecret);
   }
 
@@ -38,17 +41,16 @@ class SDKServer {
     const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
     const secretKey = this.getSessionSecret();
-  
+
     return new SignJWT({
-      openId: adminId,               // REQUIRED
-      appId: "admin",                // REQUIRED (can be any non-empty string)
-      name: options.name ?? "",      // REQUIRED
+      openId: adminId,
+      appId: "admin",
+      name: options.name ?? "",
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .setExpirationTime(expirationSeconds)
       .sign(secretKey);
   }
-  
 
   /**
    * Verify session cookie and return admin identity
@@ -56,27 +58,21 @@ class SDKServer {
   async verifySession(
     cookieValue: string | undefined | null
   ): Promise<SessionPayload | null> {
-    if (!cookieValue) {
-      return null;
-    }
-  
+    if (!cookieValue) return null;
+
     try {
       const { payload } = await jwtVerify(
         cookieValue,
         this.getSessionSecret(),
         { algorithms: ["HS256"] }
       );
-  
+
       const { openId, name } = payload as Record<string, unknown>;
-  
-      if (
-        typeof openId !== "string" ||
-        typeof name !== "string" ||
-        openId.length === 0
-      ) {
+
+      if (!isNonEmptyString(openId) || !isNonEmptyString(name)) {
         return null;
       }
-  
+
       return {
         adminUserId: openId,
         email: name,
@@ -85,7 +81,7 @@ class SDKServer {
       return null;
     }
   }
-  
+
   /**
    * Require an authenticated admin session
    */
@@ -102,4 +98,34 @@ class SDKServer {
   }
 }
 
+/**
+ * 🔑 SDK INSTANCE
+ */
 export const sdk = new SDKServer();
+
+/**
+ * 🍪 CREATE ADMIN SESSION COOKIE
+ */
+export async function createAdminSession(
+  res: Response,
+  payload: { adminId: number; email: string }
+) {
+  const token = await sdk.createSessionToken(String(payload.adminId), {
+    name: payload.email,
+  });
+
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: ONE_YEAR_MS,
+    path: "/",
+  });
+}
+
+/**
+ * 🧹 CLEAR ADMIN SESSION COOKIE
+ */
+export function clearAdminSession(res: Response) {
+  res.clearCookie(COOKIE_NAME, { path: "/" });
+}
