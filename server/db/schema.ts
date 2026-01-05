@@ -23,13 +23,23 @@ export const productOverrides = mysqlTable("product_overrides", {
     .notNull()
     .default(true),
 
-  price: int("price"), // nullable → falls back to base product
+  price: int("price"),
+
+  /**
+   * Controls delivery behavior
+   * - digital → download
+   * - booking → calendar / scheduling
+   * - gift → email voucher
+   */
+  type: varchar("type", { length: 32 }),
 
   updatedAt: timestamp("updated_at")
     .notNull()
     .defaultNow()
     .onUpdateNow(),
 });
+
+
 export const purchases = mysqlTable("purchases", {
   id: int("id").primaryKey().autoincrement(),
 

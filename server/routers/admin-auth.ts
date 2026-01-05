@@ -48,11 +48,22 @@ adminAuthRouter.post("/login", async (req, res) => {
     if (!valid) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-
+    console.log("ADMIN LOGIN", {
+      email,
+      hasHash: Boolean(admin.passwordHash),
+      hashPreview: admin.passwordHash?.slice(0, 7),
+    });
+    
     /**
      * 3️⃣ Create admin session
      * sdk handles cookie creation
      */
+
+    console.log("ADMIN SESSION ENV CHECK", {
+      hasAdminSecret: Boolean(process.env.ADMIN_SESSION_SECRET),
+      hasJwtSecret: Boolean(process.env.JWT_SECRET),
+      hasCookieSecret: Boolean(process.env.COOKIE_SECRET),
+    });
     await sdk.createAdminSession(res, {
       adminId: admin.id,
       email: admin.email,
