@@ -39,6 +39,8 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 console.log("🔥 REGISTERING ADMIN ROUTES 🔥");
+import { adminAuthRouter } from "../routers/admin-auth";
+
 app.use("/admin", adminAuthRouter);
 
 
