@@ -3,18 +3,20 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { nodeHTTPRequestHandler } from "@trpc/server/adapters/node-http";
-import { adminOrdersRouter } from "../routers/admin-orders";
+
 import { adminAuthRouter } from "../routers/admin-auth";
+import { adminOrdersRouter } from "../routers/admin-orders";
+import { adminProductsRouter } from "../routers/admin-products";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { adminProductsRouter } from "../routers/admin-products";
+
 import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
 import { downloadsWorkerRouter } from "../routers/downloads.worker.router";
 import { downloadsRouter } from "../downloads/downloads.router";
-import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { purchases } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 
@@ -22,10 +24,8 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // ✅ MUST be first
   app.use(cookieParser());
 
-  // Stripe webhook (must come before express.json)
   const { handleStripeWebhook } = await import("../stripe-webhook");
 
   app.post(
@@ -34,25 +34,20 @@ async function startServer() {
     handleStripeWebhook
   );
 
- // Standard middleware
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-console.log("🔥 REGISTERING ADMIN ROUTES 🔥");
-import { adminAuthRouter } from "../routers/admin-auth";
-
-app.use("/admin", adminAuthRouter);
-
-
-// ✅ ADD THIS
-console.log("🔥 REGISTERING CHECKOUT ROUTES 🔥");
+  console.log("🔥 REGISTERING ADMIN ROUTES 🔥");
+  app.use("/admin", adminAuthRouter);
 
   app.use("/admin/products", adminProductsRouter);
   app.use("/admin/orders", adminOrdersRouter);
+
   app.use("/products", productsRouter);
   app.use("/routers", downloadsWorkerRouter);
   app.use("/downloads", downloadsRouter);
   app.use("/checkout", checkoutRouter);
+
 
   // tRPC handler
   app.use("/api/trpc/:path", (req, res) => {
