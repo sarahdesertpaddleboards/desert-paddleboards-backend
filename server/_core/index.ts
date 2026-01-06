@@ -23,18 +23,26 @@ console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 async function startServer() {
   const app = express();
   const server = createServer(app);
+ 
+  
+  app.use(cookieParser());
+
+  const allowedOrigins = [
+    "https://desertpaddleboards.vercel.app",
+    "http://localhost:5173",
+  ];
+  
   app.use(
     cors({
-      origin: [
-        "https://desertpaddleboards.vercel.app",
-        "http://localhost:5173" // keep for sanity/debug
-      ],
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true); // curl/postman
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error(`CORS blocked for origin: ${origin}`));
+      },
       credentials: true,
     })
   );
   
-  app.use(cookieParser());
-
   const { handleStripeWebhook } = await import("../stripe-webhook");
 
   app.post(

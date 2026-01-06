@@ -28,3 +28,6 @@ tmp/
 
 # Misc
 .vscode/
+
+server/_legacy/
+Backend structure.txt

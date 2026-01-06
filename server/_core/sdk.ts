@@ -117,9 +117,9 @@ export async function createAdminSession(
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: true,
-    sameSite: "lax",
-    maxAge: ONE_YEAR_MS,
+    sameSite: "none",
     path: "/",
+    maxAge: ONE_YEAR_MS,
   });
 }
 
