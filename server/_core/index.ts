@@ -3,7 +3,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { nodeHTTPRequestHandler } from "@trpc/server/adapters/node-http";
-
+import cors from "cors";
 import { adminAuthRouter } from "../routers/admin-auth";
 import { adminOrdersRouter } from "../routers/admin-orders";
 import { adminProductsRouter } from "../routers/admin-products";
@@ -23,7 +23,16 @@ console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 async function startServer() {
   const app = express();
   const server = createServer(app);
-
+  app.use(
+    cors({
+      origin: [
+        "https://desertpaddleboards.vercel.app",
+        "http://localhost:5173" // keep for sanity/debug
+      ],
+      credentials: true,
+    })
+  );
+  
   app.use(cookieParser());
 
   const { handleStripeWebhook } = await import("../stripe-webhook");
