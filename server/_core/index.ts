@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { nodeHTTPRequestHandler } from "@trpc/server/adapters/node-http";
 import cors from "cors";
+
 import { adminAuthRouter } from "../routers/admin-auth";
 import { adminOrdersRouter } from "../routers/admin-orders";
 import { adminProductsRouter } from "../routers/admin-products";
@@ -14,6 +15,7 @@ import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
 import { downloadsWorkerRouter } from "../routers/downloads.worker.router";
 import { downloadsRouter } from "../downloads/downloads.router";
+
 import { db } from "../db";
 import { purchases } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -23,53 +25,57 @@ console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 async function startServer() {
   const app = express();
   const server = createServer(app);
- 
-  
-  app.use(cookieParser());
 
+  // REQUIRED for secure cookies behind Railway/Vercel proxies
+  app.set("trust proxy", 1);
+
+  // Cookie + JSON parsing
+  app.use(cookieParser());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // CORS
   const allowedOrigins = [
     "https://desertpaddleboards.vercel.app",
     "http://localhost:5173",
   ];
-  
+
   app.use(
     cors({
-      origin: (origin, cb) => {
-        if (!origin) return cb(null, true); // curl/postman
+      origin(origin, cb) {
+        if (!origin) return cb(null, true);
         if (allowedOrigins.includes(origin)) return cb(null, true);
         return cb(new Error(`CORS blocked for origin: ${origin}`));
       },
       credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
     })
   );
-  
-  const { handleStripeWebhook } = await import("../stripe-webhook");
 
+  // Stripe webhook
+  const { handleStripeWebhook } = await import("../stripe-webhook");
   app.post(
     "/api/stripe/webhook",
     express.raw({ type: "application/json" }),
     handleStripeWebhook
   );
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
+  // Admin routes
   console.log("🔥 REGISTERING ADMIN ROUTES 🔥");
   app.use("/admin", adminAuthRouter);
-
   app.use("/admin/products", adminProductsRouter);
   app.use("/admin/orders", adminOrdersRouter);
 
+  // Shop routes
   app.use("/products", productsRouter);
-  app.use("/routers", downloadsWorkerRouter);
   app.use("/downloads", downloadsRouter);
+  app.use("/routers", downloadsWorkerRouter);
   app.use("/checkout", checkoutRouter);
 
-
-  // tRPC handler
+  // tRPC
   app.use("/api/trpc/:path", (req, res) => {
     const procedure = req.params.path;
-
     let input = undefined;
 
     if (req.method === "GET" && typeof req.query.input === "string") {
@@ -94,92 +100,31 @@ async function startServer() {
     });
   });
 
-  const port = parseInt(process.env.PORT || "3000", 10);
-
+  // SUCCESS PAGE
   app.get("/success", async (req, res) => {
     try {
       const sessionId = req.query.session_id as string | undefined;
-  
-      if (!sessionId) {
-        return res.status(400).send("Missing session information");
-      }
-  
-      // 1️⃣ Find purchase created by webhook
+      if (!sessionId) return res.status(400).send("Missing session");
+
       const purchase = await db
         .select()
         .from(purchases)
         .where(eq(purchases.stripeSessionId, sessionId))
         .limit(1)
         .then(r => r[0]);
-  
-      if (!purchase) {
-        return res
-          .status(404)
-          .send("Purchase not found. Please contact support.");
-      }
-  
-      // 2️⃣ Render simple success + download page
+
+      if (!purchase)
+        return res.status(404).send("Purchase not found. Contact support.");
+
       res.setHeader("Content-Type", "text/html");
-  
+
       return res.send(`
         <!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <meta charset="UTF-8" />
-            <title>Purchase successful</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <style>
-              body {
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-                background: #f9fafb;
-                color: #111;
-                padding: 40px;
-              }
-              .card {
-                max-width: 520px;
-                margin: 0 auto;
-                background: white;
-                padding: 32px;
-                border-radius: 12px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-              }
-              h1 {
-                margin-top: 0;
-              }
-              a.button {
-                display: inline-block;
-                margin-top: 24px;
-                padding: 14px 20px;
-                background: #0074d4;
-                color: white;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 600;
-              }
-              a.button:hover {
-                background: #005fa3;
-              }
-              .note {
-                margin-top: 24px;
-                font-size: 14px;
-                color: #555;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <h1>🎉 Purchase successful</h1>
-              <p>Thank you for your purchase.</p>
-  
-              <a class="button" href="/downloads/${purchase.id}">
-                Download your file
-              </a>
-  
-              <p class="note">
-                If your download doesn’t start, you can refresh this page or contact support.
-              </p>
-            </div>
-          </body>
+        <html>
+        <body>
+          <h1>🎉 Purchase successful</h1>
+          <a href="/downloads/${purchase.id}">Download your file</a>
+        </body>
         </html>
       `);
     } catch (err) {
@@ -188,21 +133,23 @@ async function startServer() {
     }
   });
 
- // 🔍 TEMPORARY HEALTH CHECK (DEBUG ONLY)
- app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    env: {
-      DATABASE_URL: !!process.env.DATABASE_URL,
-      STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
-      DOWNLOAD_WORKER_SECRET: !!process.env.DOWNLOAD_WORKER_SECRET,
-    },
+  // Health check
+  app.get("/health", (_req, res) => {
+    res.json({
+      ok: true,
+      env: {
+        DATABASE_URL: !!process.env.DATABASE_URL,
+        STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
+        DOWNLOAD_WORKER_SECRET: !!process.env.DOWNLOAD_WORKER_SECRET,
+      },
+    });
   });
-});
 
-app.get("/cancel", (_req, res) => {
-  res.send("❌ Payment cancelled");
-});
+  app.get("/cancel", (_req, res) => {
+    res.send("❌ Payment cancelled");
+  });
+
+  const port = parseInt(process.env.PORT || "3000", 10);
   server.listen(port, () => {
     console.log(`Server running on port ${port}`);
   });
