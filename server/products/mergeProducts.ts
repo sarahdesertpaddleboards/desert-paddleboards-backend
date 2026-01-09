@@ -1,46 +1,52 @@
-import { PRODUCTS, ProductKey } from "../products";
+import { db } from "../db";
+import { productOverrides, classProducts } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 export type PublicProduct = {
-  key: ProductKey;
+  productKey: string;
   name: string;
-  description: string;
+  description: string | null;
   price: number;
   currency: string;
-  type: string;
+  type: "class" | "digital" | "physical";
   active: boolean;
+  imageUrl?: string | null;
 };
 
-export function mergeProducts(
-  overrides: Array<{
-    productKey: string;
-    active: boolean;
-    price: number | null;
-  }>
-): PublicProduct[] {
+export async function loadPublicProducts(): Promise<PublicProduct[]> {
+  // Load class products
+  const classes = await db.select().from(classProducts);
+
+  // Load overrides (same table used for old system)
+  const overrides = await db.select().from(productOverrides);
+
   const overrideMap = new Map(
     overrides.map((o) => [o.productKey, o])
   );
 
-  return (Object.entries(PRODUCTS) as [ProductKey, any][])
-    .map(([key, base]) => {
-      const override = overrideMap.get(key);
+  const merged = classes.map((p) => {
+    const override = overrideMap.get(p.productKey);
 
-      const active =
-      override && override.active !== undefined && override.active !== null
-        ? override.active
-        : true;
-    
-    if (!active) return null;
+    const active =
+      override?.active !== undefined ? override.active : p.active;
 
-      return {
-        key,
-        name: base.name,
-        description: base.description,
-        currency: base.currency,
-        type: base.type,
-        price: override?.price ?? base.price,
-        active: true,
-      };
-    })
-    .filter(Boolean) as PublicProduct[];
+    const price =
+      override?.price !== undefined && override?.price !== null
+        ? override.price
+        : p.price;
+
+    return {
+      productKey: p.productKey,
+      name: p.name,
+      description: p.description ?? "",
+      price,
+      currency: p.currency,
+      type: "class",
+      active,
+      imageUrl: p.imageUrl,
+    } as PublicProduct;
+  });
+
+  // Only return active products
+  return merged.filter((p) => p.active);
 }
