@@ -1,9 +1,9 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { db } from "../db";
-import { orders, purchases, productOverrides } from "../db/schema";
+import { orders, purchases } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { mergeProducts } from "../products/mergeProducts";
+import { loadPublicProducts } from "../products/mergeProducts";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
@@ -26,11 +26,11 @@ checkoutRouter.post("/create", async (req, res) => {
       return res.status(400).json({ error: "Missing productKey" });
     }
 
-    // Load product catalog (base + overrides)
-    const overrides = await db.select().from(productOverrides);
-    const products = mergeProducts(overrides);
+    // Load DB-backed public products
+    const products = await loadPublicProducts();
 
-    const product = products.find(p => p.key === productKey);
+    // Note: new format uses product.productKey
+    const product = products.find(p => p.productKey === productKey);
 
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
@@ -51,7 +51,7 @@ checkoutRouter.post("/create", async (req, res) => {
             unit_amount: product.price,
             product_data: {
               name: product.name,
-              description: product.description,
+              description: product.description ?? "",
             },
           },
           quantity: 1,
@@ -60,7 +60,7 @@ checkoutRouter.post("/create", async (req, res) => {
       success_url: `${PUBLIC_SITE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${PUBLIC_SITE_URL}/cancel`,
       metadata: {
-        productKey: product.key,
+        productKey: product.productKey,
       },
     });
 
@@ -73,27 +73,13 @@ checkoutRouter.post("/create", async (req, res) => {
 
 /**
  * ============================================================
- * CHECKOUT SUCCESS DATA ENDPOINT
+ * CHECKOUT SUCCESS ENDPOINT
  * ============================================================
- *
- * GET /checkout/success/:sessionId
- *
- * Called by:
- *  - Frontend success page
- *
- * Responsibilities:
- *  - Load order by Stripe session ID
- *  - Load purchases linked to that session
- *  - Return delivery instructions
  */
 checkoutRouter.get("/success/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    /**
-     * 1️⃣ Load order
-     * orders.id === Stripe Checkout Session ID
-     */
     const order = await db
       .select()
       .from(orders)
@@ -105,25 +91,16 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    /**
-     * 2️⃣ Load purchases linked to this checkout
-     * purchases.stripeSessionId === orders.id
-     */
     const orderPurchases = await db
       .select()
       .from(purchases)
       .where(eq(purchases.stripeSessionId, sessionId));
 
-    /**
-     * 3️⃣ Map purchases into delivery objects
-     */
     const deliveries = orderPurchases.map(p => {
       let type: "digital" | "gift" | "booking" = "digital";
 
       if (p.productKey.includes("GIFT")) type = "gift";
-      if (p.productKey.includes("SOUNDBATH") || p.productKey.includes("CLASS")) {
-        type = "booking";
-      }
+      if (p.productKey.includes("CLASS")) type = "booking";
 
       return {
         purchaseId: p.id,
@@ -132,9 +109,6 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
       };
     });
 
-    /**
-     * 4️⃣ Respond with structured data
-     */
     return res.json({
       sessionId,
       status: order.status,
@@ -146,4 +120,3 @@ checkoutRouter.get("/success/:sessionId", async (req, res) => {
     return res.status(500).json({ error: "Unable to load order" });
   }
 });
-
