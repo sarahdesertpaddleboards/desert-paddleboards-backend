@@ -19,6 +19,9 @@ import { downloadsRouter } from "../downloads/downloads.router";
 import { db } from "../db";
 import { purchases } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { classProductsRouter } from "../routers/class-products";
+import { classSessionsRouter } from "../routers/class-sessions";
+
 
 console.log("🔥 INDEX.TS LOADED FROM server/_core/index.ts 🔥");
 
@@ -66,7 +69,9 @@ async function startServer() {
   app.use("/admin", adminAuthRouter);
   app.use("/admin/products", adminProductsRouter);
   app.use("/admin/orders", adminOrdersRouter);
-
+  app.use("/admin/class-products", classProductsRouter);
+  app.use("/admin/class-sessions", classSessionsRouter);
+  
   // Shop routes
   app.use("/products", productsRouter);
   app.use("/downloads", downloadsRouter);

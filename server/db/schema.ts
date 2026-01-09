@@ -87,3 +87,43 @@ export const downloads = mysqlTable("downloads", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+// -----------------------------------------
+// CLASS PRODUCTS (OPTION B)
+// -----------------------------------------
+export const classProducts = mysqlTable("class_products", {
+  id: int("id").primaryKey().autoincrement(),
+
+  productKey: varchar("product_key", { length: 64 }).notNull().unique(),
+
+  name: varchar("name", { length: 255 }).notNull(),
+  description: varchar("description", { length: 2000 }),
+
+  price: int("price").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+
+  imageUrl: varchar("image_url", { length: 500 }),
+
+  capacity: int("capacity").notNull().default(1),
+
+  active: boolean("active").notNull().default(true),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
+});
+
+// -----------------------------------------
+// CLASS SESSIONS
+// -----------------------------------------
+export const classSessions = mysqlTable("class_sessions", {
+  id: int("id").primaryKey().autoincrement(),
+
+  classProductId: int("class_product_id").notNull(),
+  
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+
+  seatsTotal: int("seats_total").notNull(),
+  seatsAvailable: int("seats_available").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow(),
+});

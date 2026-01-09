@@ -1,0 +1,133 @@
+.
+├── Backend structure.txt
+├── backendstructure.txt
+├── cookies.txt
+├── dist
+│   └── index.js
+├── drizzle
+│   ├── 0000_large_dark_phoenix.sql
+│   ├── 0001_solid_leech.sql
+│   ├── 0002_normal_alex_power.sql
+│   ├── 0003_certain_jetstream.sql
+│   ├── 0004_high_tomas.sql
+│   ├── 0005_flippant_genesis.sql
+│   ├── 0006_damp_alex_wilder.sql
+│   ├── 0007_known_genesis.sql
+│   ├── 0008_vengeful_otto_octavius.sql
+│   ├── 0009_add_product_type.sql
+│   ├── meta
+│   │   ├── _journal.json
+│   │   ├── 0000_snapshot.json
+│   │   ├── 0001_snapshot.json
+│   │   ├── 0002_snapshot.json
+│   │   ├── 0003_snapshot.json
+│   │   ├── 0004_snapshot.json
+│   │   ├── 0005_snapshot.json
+│   │   ├── 0006_snapshot.json
+│   │   ├── 0007_snapshot.json
+│   │   └── 0008_snapshot.json
+│   ├── migrations
+│   ├── relations.ts
+│   └── schema.ts
+├── drizzle.config.json
+├── drizzle.config.ts
+├── node_modules
+│   ├── @aws-sdk
+│   │   ├── client-s3 -> ../.pnpm/@aws-sdk+client-s3@3.946.0/node_modules/@aws-sdk/client-s3
+│   │   └── s3-request-presigner -> ../.pnpm/@aws-sdk+s3-request-presigner@3.946.0/node_modules/@aws-sdk/s3-request-presigner
+│   ├── @trpc
+│   │   └── server -> ../.pnpm/@trpc+server@11.7.2_typescript@5.9.3/node_modules/@trpc/server
+│   ├── @types
+│   │   ├── cookie-parser -> ../.pnpm/@types+cookie-parser@1.4.10_@types+express@4.17.21/node_modules/@types/cookie-parser
+│   │   ├── express -> ../.pnpm/@types+express@4.17.21/node_modules/@types/express
+│   │   └── node -> ../.pnpm/@types+node@24.10.1/node_modules/@types/node
+│   ├── axios -> .pnpm/axios@1.13.2/node_modules/axios
+│   ├── bcryptjs -> .pnpm/bcryptjs@3.0.3/node_modules/bcryptjs
+│   ├── cookie -> .pnpm/cookie@1.1.1/node_modules/cookie
+│   ├── cookie-parser -> .pnpm/cookie-parser@1.4.7/node_modules/cookie-parser
+│   ├── cors -> .pnpm/cors@2.8.5/node_modules/cors
+│   ├── dotenv -> .pnpm/dotenv@17.2.3/node_modules/dotenv
+│   ├── drizzle-kit -> .pnpm/drizzle-kit@0.31.8/node_modules/drizzle-kit
+│   ├── drizzle-orm -> .pnpm/drizzle-orm@0.44.7_mysql2@3.15.3/node_modules/drizzle-orm
+│   ├── esbuild -> .pnpm/esbuild@0.25.12/node_modules/esbuild
+│   ├── express -> .pnpm/express@4.22.1/node_modules/express
+│   ├── jose -> .pnpm/jose@6.1.0/node_modules/jose
+│   ├── mysql2 -> .pnpm/mysql2@3.15.3/node_modules/mysql2
+│   ├── nanoid -> .pnpm/nanoid@5.1.6/node_modules/nanoid
+│   ├── resend -> .pnpm/resend@6.5.2/node_modules/resend
+│   ├── stripe -> .pnpm/stripe@20.0.0_@types+node@24.10.1/node_modules/stripe
+│   ├── superjson -> .pnpm/superjson@2.2.6/node_modules/superjson
+│   ├── tsx -> .pnpm/tsx@4.21.0/node_modules/tsx
+│   ├── typescript -> .pnpm/typescript@5.9.3/node_modules/typescript
+│   └── zod -> .pnpm/zod@4.1.13/node_modules/zod
+├── package.json
+├── pnpm-lock.yaml
+├── railway-cookies.txt
+├── scripts
+│   ├── create-admin.ts
+│   └── test-admin-auth.sh
+├── server
+│   ├── _core
+│   │   ├── context.ts
+│   │   ├── cookies.ts
+│   │   ├── dataApi.ts
+│   │   ├── email.ts
+│   │   ├── env.ts
+│   │   ├── flodesk.ts
+│   │   ├── index.ts
+│   │   ├── notification.ts
+│   │   ├── sdk.ts
+│   │   ├── systemRouter.ts
+│   │   ├── trpc.ts
+│   │   └── types
+│   │       ├── cookie.d.ts
+│   │       └── manusTypes.ts
+│   ├── _legacy
+│   │   ├── imageGeneration.ts
+│   │   ├── llm.ts
+│   │   ├── map.ts
+│   │   └── voiceTranscription.ts
+│   ├── admin
+│   │   └── 001_create_admin_users.sql
+│   ├── album.checkout.test.ts
+│   ├── analytics.test.ts
+│   ├── auth.logout.test.ts
+│   ├── db
+│   │   ├── schema.ts
+│   │   └── seed-admin.ts
+│   ├── db-helpers.ts
+│   ├── db.ts
+│   ├── downloads
+│   │   ├── downloads.router.ts
+│   │   └── downloads.service.ts
+│   ├── flodesk.test.ts
+│   ├── products
+│   │   ├── digitalFiles.ts
+│   │   ├── getAdminProducts.ts
+│   │   └── mergeProducts.ts
+│   ├── products.ts
+│   ├── routers
+│   │   ├── admin-auth.ts
+│   │   ├── admin-orders.ts
+│   │   ├── admin-products.ts
+│   │   ├── analytics.ts
+│   │   ├── checkout.ts
+│   │   ├── downloads.worker.router.ts
+│   │   ├── events.test.ts
+│   │   ├── events.ts
+│   │   ├── inquiries.ts
+│   │   ├── products.ts
+│   │   └── shop.ts
+│   ├── routers.ts
+│   ├── storage.ts
+│   ├── stripe-webhook.ts
+│   └── track.checkout.test.ts
+├── shared
+│   ├── _core
+│   │   └── errors.ts
+│   ├── const.ts
+│   └── types.ts
+├── tsconfig.json
+└── vercel.json
+
+46 directories, 85 files
