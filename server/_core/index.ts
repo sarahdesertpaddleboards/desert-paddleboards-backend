@@ -80,6 +80,9 @@ async function startServer() {
   // PUBLIC ROUTES
   // -----------------------------------------------------
   app.use("/products", productsRouter);
+  app.use("/class-products", classProductsRouter);
+app.use("/class-sessions", classSessionsRouter);
+
   app.use("/checkout", checkoutRouter);
   app.use("/downloads", downloadsRouter);
   app.use("/worker", downloadsWorkerRouter);
