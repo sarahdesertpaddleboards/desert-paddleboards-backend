@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { mergeProducts } from "../utils/mergeProducts";
+import { loadPublicProducts } from "../products/mergeProducts";
 
 export const productsRouter = Router();
 
 productsRouter.get("/", async (req, res) => {
   try {
-    const items = await mergeProducts();
+    const products = await loadPublicProducts();
+
     res.json(items);
   } catch (err) {
     console.error("PRODUCTS ROUTE ERROR", err);
