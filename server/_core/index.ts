@@ -7,8 +7,7 @@ import cors from "cors";
 import { adminAuthRouter } from "../routers/admin-auth";
 import { adminOrdersRouter } from "../routers/admin-orders";
 import { adminProductsRouter } from "../routers/admin-products";
-import { classProductsRouter } from "../routers/class-products";
-import { classSessionsRouter } from "../routers/class-sessions";
+
 
 import { productsRouter } from "../routers/products";
 import { checkoutRouter } from "../routers/checkout";
@@ -77,16 +76,14 @@ async function startServer() {
   app.use("/admin", adminAuthRouter);
   app.use("/admin/orders", adminOrdersRouter);
   app.use("/admin/products", adminProductsRouter);
-  app.use("/admin/class-products", classProductsRouter);
-  app.use("/admin/class-sessions", classSessionsRouter);
+
 
   // -----------------------------------------------------
   // PUBLIC ROUTES
   // -----------------------------------------------------
   app.use("/products", productsRouter);
 
-app.use("/class-products", publicClassProductsRouter);
-app.use("/class-sessions", publicClassSessionsRouter);
+
 app.use("/gift-certificates", giftCertificatesRouter);
 app.use("/shipping", shippingRouter);
 
