@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { productOverrides, classProducts } from "../db/schema";
+import { classProducts, productOverrides } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 export type PublicProduct = {
@@ -8,32 +8,50 @@ export type PublicProduct = {
   description: string | null;
   price: number;
   currency: string;
-  type: "class" | "digital" | "physical";
+  type: "class" | "digital" | "merch" | "gift";
   active: boolean;
   imageUrl?: string | null;
 };
 
+/**
+ * Loads products from class_products and merges optional overrides.
+ *
+ * class_products is now the master table for ALL product types:
+ *   - classes
+ *   - digital downloads
+ *   - merch
+ *   - gift certificates
+ *
+ * product_overrides allows admin adjustments:
+ *   - active override
+ *   - price override
+ *   - type override (optional)
+ */
 export async function loadPublicProducts(): Promise<PublicProduct[]> {
-  // Load class products
-  const classes = await db.select().from(classProducts);
+  // Load products from master table
+  const baseProducts = await db.select().from(classProducts);
 
-  // Load overrides (same table used for old system)
+  // Load overrides
   const overrides = await db.select().from(productOverrides);
 
   const overrideMap = new Map(
     overrides.map((o) => [o.productKey, o])
   );
 
-  const merged = classes.map((p) => {
-    const override = overrideMap.get(p.productKey);
+  const merged: PublicProduct[] = baseProducts.map((p) => {
+    const o = overrideMap.get(p.productKey);
 
-    const active =
-      override?.active !== undefined ? override.active : p.active;
+    const active = o?.active !== undefined ? o.active : p.active;
 
     const price =
-      override?.price !== undefined && override?.price !== null
-        ? override.price
+      o?.price !== undefined && o?.price !== null
+        ? o.price
         : p.price;
+
+    const type =
+      (o?.type as PublicProduct["type"]) ||
+      (p.productType as PublicProduct["type"]) ||
+      "class";
 
     return {
       productKey: p.productKey,
@@ -41,12 +59,11 @@ export async function loadPublicProducts(): Promise<PublicProduct[]> {
       description: p.description ?? "",
       price,
       currency: p.currency,
-      type: "class",
+      type,
       active,
       imageUrl: p.imageUrl,
-    } as PublicProduct;
+    };
   });
 
-  // Only return active products
   return merged.filter((p) => p.active);
 }

@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { loadPublicProducts } from "../products/mergeProducts";
+import { mergeProducts } from "../utils/mergeProducts";
 
 export const productsRouter = Router();
 
-productsRouter.get("/", async (_req, res) => {
+productsRouter.get("/", async (req, res) => {
   try {
-    const products = await loadPublicProducts();
-    return res.json(products);
+    const items = await mergeProducts();
+    res.json(items);
   } catch (err) {
-    console.error("PUBLIC PRODUCTS ERROR", err);
-    return res.status(500).json({ error: "Failed to load products" });
+    console.error("PRODUCTS ROUTE ERROR", err);
+    res.status(500).json({ error: "Failed to load products" });
   }
 });

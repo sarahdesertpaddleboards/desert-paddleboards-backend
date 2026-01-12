@@ -15,6 +15,8 @@
 │   ├── 0007_known_genesis.sql
 │   ├── 0008_vengeful_otto_octavius.sql
 │   ├── 0009_add_product_type.sql
+│   ├── 0009_square_mockingbird.sql
+│   ├── 0010_oval_frank_castle.sql
 │   ├── meta
 │   │   ├── _journal.json
 │   │   ├── 0000_snapshot.json
@@ -25,7 +27,9 @@
 │   │   ├── 0005_snapshot.json
 │   │   ├── 0006_snapshot.json
 │   │   ├── 0007_snapshot.json
-│   │   └── 0008_snapshot.json
+│   │   ├── 0008_snapshot.json
+│   │   ├── 0009_snapshot.json
+│   │   └── 0010_snapshot.json
 │   ├── migrations
 │   ├── relations.ts
 │   └── schema.ts
@@ -68,25 +72,16 @@
 │   └── test-admin-auth.sh
 ├── server
 │   ├── _core
-│   │   ├── context.ts
 │   │   ├── cookies.ts
 │   │   ├── dataApi.ts
 │   │   ├── email.ts
 │   │   ├── env.ts
 │   │   ├── flodesk.ts
 │   │   ├── index.ts
-│   │   ├── notification.ts
 │   │   ├── sdk.ts
-│   │   ├── systemRouter.ts
-│   │   ├── trpc.ts
 │   │   └── types
 │   │       ├── cookie.d.ts
 │   │       └── manusTypes.ts
-│   ├── _legacy
-│   │   ├── imageGeneration.ts
-│   │   ├── llm.ts
-│   │   ├── map.ts
-│   │   └── voiceTranscription.ts
 │   ├── admin
 │   │   └── 001_create_admin_users.sql
 │   ├── album.checkout.test.ts
@@ -110,15 +105,15 @@
 │   │   ├── admin-auth.ts
 │   │   ├── admin-orders.ts
 │   │   ├── admin-products.ts
-│   │   ├── analytics.ts
 │   │   ├── checkout.ts
+│   │   ├── class-products.ts
+│   │   ├── class-sessions.ts
 │   │   ├── downloads.worker.router.ts
-│   │   ├── events.test.ts
-│   │   ├── events.ts
-│   │   ├── inquiries.ts
+│   │   ├── gift-certificates.ts
 │   │   ├── products.ts
-│   │   └── shop.ts
-│   ├── routers.ts
+│   │   ├── public-class-products.ts
+│   │   ├── public-class-sessions.ts
+│   │   └── shipping.ts
 │   ├── storage.ts
 │   ├── stripe-webhook.ts
 │   └── track.checkout.test.ts
@@ -130,4 +125,4 @@
 ├── tsconfig.json
 └── vercel.json
 
-46 directories, 85 files
+45 directories, 81 files

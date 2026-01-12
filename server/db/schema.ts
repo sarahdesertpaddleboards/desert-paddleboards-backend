@@ -5,33 +5,31 @@ import {
   timestamp,
   boolean,
   json,
+  text,
 } from "drizzle-orm/mysql-core";
 
-
-
+// =======================================
+// ADMIN USERS
+// =======================================
 export const adminUsers = mysqlTable("admin_users", {
   id: int("id").primaryKey().autoincrement(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow()
+  createdAt: timestamp("created_at").defaultNow(),
 });
-export const productOverrides = mysqlTable("product_overrides", {
-  productKey: varchar("product_key", { length: 64 })
-    .primaryKey(),
 
-  active: boolean("active")
-    .notNull()
-    .default(true),
+// =======================================
+// PRODUCT OVERRIDES
+// =======================================
+export const productOverrides = mysqlTable("product_overrides", {
+  productKey: varchar("product_key", { length: 64 }).primaryKey(),
+
+  active: boolean("active").notNull().default(true),
 
   price: int("price"),
 
-  /**
-   * Controls delivery behavior
-   * - digital → download
-   * - booking → calendar / scheduling
-   * - gift → email voucher
-   */
   type: varchar("type", { length: 32 }),
+  // "class" | "digital" | "merch" | "gift"
 
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -39,7 +37,9 @@ export const productOverrides = mysqlTable("product_overrides", {
     .onUpdateNow(),
 });
 
-
+// =======================================
+// PURCHASES
+// =======================================
 export const purchases = mysqlTable("purchases", {
   id: int("id").primaryKey().autoincrement(),
 
@@ -56,24 +56,34 @@ export const purchases = mysqlTable("purchases", {
 
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// =======================================
+// ORDERS (STRIPE WEBHOOK → LOGS)
+// =======================================
 export const orders = mysqlTable("orders", {
-  id: varchar("id", { length: 255 }).primaryKey(),
+  id: varchar("id", { length: 255 }).primaryKey(), // stripe event id
 
   productKey: varchar("product_key", { length: 64 }).notNull(),
+
   amount: int("amount").notNull(),
   currency: varchar("currency", { length: 10 }).notNull(),
 
   status: varchar("status", { length: 32 }).notNull(),
+
   customerEmail: varchar("customer_email", { length: 255 }),
 
   stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
+
   raw: json("raw").notNull(),
 
-  fulfilledAt: timestamp("fulfilled_at"), // 👈 NEW
+  fulfilledAt: timestamp("fulfilled_at"), // When gift/merch/digital is marked done
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// =======================================
+// DIGITAL DOWNLOAD TOKENS
+// =======================================
 export const downloads = mysqlTable("downloads", {
   id: int("id").primaryKey().autoincrement(),
 
@@ -87,9 +97,10 @@ export const downloads = mysqlTable("downloads", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-// -----------------------------------------
-// CLASS PRODUCTS (OPTION B)
-// -----------------------------------------
+
+// =======================================
+// CLASS PRODUCTS
+// =======================================
 export const classProducts = mysqlTable("class_products", {
   id: int("id").primaryKey().autoincrement(),
 
@@ -97,6 +108,9 @@ export const classProducts = mysqlTable("class_products", {
 
   name: varchar("name", { length: 255 }).notNull(),
   description: varchar("description", { length: 2000 }),
+
+  productType: varchar("product_type", { length: 32 }).notNull(),
+  // "class" | "digital" | "merch" | "gift"
 
   price: int("price").notNull(),
   currency: varchar("currency", { length: 10 }).notNull(),
@@ -111,19 +125,59 @@ export const classProducts = mysqlTable("class_products", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });
 
-// -----------------------------------------
+// =======================================
 // CLASS SESSIONS
-// -----------------------------------------
+// =======================================
 export const classSessions = mysqlTable("class_sessions", {
   id: int("id").primaryKey().autoincrement(),
 
   classProductId: int("class_product_id").notNull(),
-  
+
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),
 
   seatsTotal: int("seats_total").notNull(),
   seatsAvailable: int("seats_available").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =======================================
+// GIFT CERTIFICATES
+// =======================================
+export const giftCertificates = mysqlTable("gift_certificates", {
+  id: int("id").primaryKey().autoincrement(),
+
+  purchaseId: int("purchase_id").notNull(),
+
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+
+  recipientName: varchar("recipient_name", { length: 255 }),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  message: text("message"),
+
+  generatedCode: varchar("generated_code", { length: 128 }).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =======================================
+// SHIPPING ADDRESSES (MERCH)
+// =======================================
+export const shippingAddresses = mysqlTable("shipping_addresses", {
+  id: int("id").primaryKey().autoincrement(),
+
+  purchaseId: int("purchase_id").notNull(),
+
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+
+  fullName: varchar("full_name", { length: 255 }).notNull(),
+  addressLine1: varchar("address_line1", { length: 255 }).notNull(),
+  addressLine2: varchar("address_line2", { length: 255 }),
+  city: varchar("city", { length: 255 }).notNull(),
+  state: varchar("state", { length: 255 }),
+  postalCode: varchar("postal_code", { length: 50 }).notNull(),
+  country: varchar("country", { length: 255 }).notNull(),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
