@@ -1,15 +1,21 @@
+// server/routers/products.ts
 import { Router } from "express";
 import { loadPublicProducts } from "../products/mergeProducts";
 
-export const productsRouter = Router();
+const router = Router();
 
-productsRouter.get("/", async (req, res) => {
+// GET /products — unified public product loader
+router.get("/", async (_req, res) => {
   try {
+    // Load products using the new merged system
     const products = await loadPublicProducts();
 
-    res.json(items);
+    // Return them directly
+    return res.json(products);
   } catch (err) {
     console.error("PRODUCTS ROUTE ERROR", err);
-    res.status(500).json({ error: "Failed to load products" });
+    return res.status(500).json({ error: "Failed to load products" });
   }
 });
+
+export { router as productsRouter };
