@@ -35,7 +35,7 @@ export const products = mysqlTable("products", {
 });
 
 // ---------------------------------------------------------
-// PRODUCT OVERRIDES (legacy dynamic pricing)
+// PRODUCT OVERRIDES (legacy dynamic pricing) um
 // ---------------------------------------------------------
 export const productOverrides = mysqlTable("product_overrides", {
   id: int("id").primaryKey().autoincrement(),
