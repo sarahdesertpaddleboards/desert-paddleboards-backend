@@ -1,183 +1,37 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  timestamp,
-  boolean,
-  json,
-  text,
-} from "drizzle-orm/mysql-core";
+// ---------------------------------------------------------
+// CLASS PRODUCTS TABLE
+// ---------------------------------------------------------
 
-// =======================================
-// ADMIN USERS
-// =======================================
-export const adminUsers = mysqlTable("admin_users", {
-  id: int("id").primaryKey().autoincrement(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// =======================================
-// PRODUCT OVERRIDES
-// =======================================
-export const productOverrides = mysqlTable("product_overrides", {
-  productKey: varchar("product_key", { length: 64 }).primaryKey(),
-
-  active: boolean("active").notNull().default(true),
-
-  price: int("price"),
-
-  type: varchar("type", { length: 32 }),
-  // "class" | "digital" | "merch" | "gift"
-
-  updatedAt: timestamp("updated_at")
-    .notNull()
-    .defaultNow()
-    .onUpdateNow(),
-});
-
-// =======================================
-// PURCHASES
-// =======================================
-export const purchases = mysqlTable("purchases", {
-  id: int("id").primaryKey().autoincrement(),
-
-  stripeSessionId: varchar("stripe_session_id", { length: 255 })
-    .notNull()
-    .unique(),
-
-  productKey: varchar("product_key", { length: 64 }).notNull(),
-
-  amount: int("amount").notNull(),
-  currency: varchar("currency", { length: 10 }).notNull(),
-
-  customerEmail: varchar("customer_email", { length: 255 }),
-
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// =======================================
-// ORDERS (STRIPE WEBHOOK → LOGS)
-// =======================================
-export const orders = mysqlTable("orders", {
-  id: varchar("id", { length: 255 }).primaryKey(), // stripe event id
-
-  productKey: varchar("product_key", { length: 64 }).notNull(),
-
-  amount: int("amount").notNull(),
-  currency: varchar("currency", { length: 10 }).notNull(),
-
-  status: varchar("status", { length: 32 }).notNull(),
-
-  customerEmail: varchar("customer_email", { length: 255 }),
-
-  stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
-
-  raw: json("raw").notNull(),
-
-  fulfilledAt: timestamp("fulfilled_at"), // When gift/merch/digital is marked done
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// =======================================
-// DIGITAL DOWNLOAD TOKENS
-// =======================================
-export const downloads = mysqlTable("downloads", {
-  id: int("id").primaryKey().autoincrement(),
-
-  orderId: varchar("order_id", { length: 255 }).notNull(),
-  productKey: varchar("product_key", { length: 64 }).notNull(),
-
-  token: varchar("token", { length: 64 }).notNull().unique(),
-
-  usedAt: timestamp("used_at"),
-  expiresAt: timestamp("expires_at"),
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// =======================================
-// CLASS PRODUCTS
-// =======================================
 export const classProducts = mysqlTable("class_products", {
-  id: int("id").primaryKey().autoincrement(),
-
-  productKey: varchar("product_key", { length: 64 }).notNull().unique(),
-
-  name: varchar("name", { length: 255 }).notNull(),
-  description: varchar("description", { length: 2000 }),
-
-  productType: varchar("product_type", { length: 32 }).notNull(),
-  // "class" | "digital" | "merch" | "gift"
-
-  price: int("price").notNull(),
-  currency: varchar("currency", { length: 10 }).notNull(),
-
-  imageUrl: varchar("image_url", { length: 500 }),
-
-  capacity: int("capacity").notNull().default(1),
-
-  active: boolean("active").notNull().default(true),
-
+  id: int("id").primaryKey().autoincrement(),             // Unique class product ID
+  productKey: varchar("product_key", { length: 128 }),     // For frontend linking
+  name: varchar("name", { length: 255 }).notNull(),        // Class name (ex. "Sunset SUP")
+  description: text("description"),                        // Class description
+  price: int("price").notNull(),                           // Price in cents
+  currency: varchar("currency", { length: 10 }).notNull(), // Example: "usd"
+  capacity: int("capacity").notNull(),                     // Default capacity for new sessions
+  imageUrl: varchar("image_url", { length: 500 }),          // Optional header image
+  active: boolean("active").default(true),                 // Visible to users?
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// =======================================
-// CLASS SESSIONS
-// =======================================
+// ---------------------------------------------------------
+// CLASS SESSIONS TABLE
+// ---------------------------------------------------------
+
 export const classSessions = mysqlTable("class_sessions", {
-  id: int("id").primaryKey().autoincrement(),
+  id: int("id").primaryKey().autoincrement(),             // Unique session ID
+  classProductId: int("class_product_id")                  // FK → class_products.id
+    .notNull()
+    .references(() => classProducts.id),
+  
+  startTime: datetime("start_time").notNull(),            // Full datetime
+  endTime: datetime("end_time").notNull(),                // Full datetime
 
-  classProductId: int("class_product_id").notNull(),
-
-  startTime: timestamp("start_time").notNull(),
-  endTime: timestamp("end_time"),
-
-  seatsTotal: int("seats_total").notNull(),
-  seatsAvailable: int("seats_available").notNull(),
-
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// =======================================
-// GIFT CERTIFICATES
-// =======================================
-export const giftCertificates = mysqlTable("gift_certificates", {
-  id: int("id").primaryKey().autoincrement(),
-
-  purchaseId: int("purchase_id").notNull(),
-
-  productKey: varchar("product_key", { length: 64 }).notNull(),
-
-  recipientName: varchar("recipient_name", { length: 255 }),
-  recipientEmail: varchar("recipient_email", { length: 255 }),
-  message: text("message"),
-
-  generatedCode: varchar("generated_code", { length: 128 }).notNull(),
+  seatsTotal: int("seats_total").notNull(),               // How many can join
+  seatsAvailable: int("seats_available").notNull(),       // Live remaining seats
 
   createdAt: timestamp("created_at").defaultNow(),
-});
-
-// =======================================
-// SHIPPING ADDRESSES (MERCH)
-// =======================================
-export const shippingAddresses = mysqlTable("shipping_addresses", {
-  id: int("id").primaryKey().autoincrement(),
-
-  purchaseId: int("purchase_id").notNull(),
-
-  productKey: varchar("product_key", { length: 64 }).notNull(),
-
-  fullName: varchar("full_name", { length: 255 }).notNull(),
-  addressLine1: varchar("address_line1", { length: 255 }).notNull(),
-  addressLine2: varchar("address_line2", { length: 255 }),
-  city: varchar("city", { length: 255 }).notNull(),
-  state: varchar("state", { length: 255 }),
-  postalCode: varchar("postal_code", { length: 50 }).notNull(),
-  country: varchar("country", { length: 255 }).notNull(),
-
-  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });

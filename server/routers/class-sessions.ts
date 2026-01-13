@@ -1,81 +1,87 @@
 import { Router } from "express";
 import { db } from "../db";
-import { classProducts, classSessions } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { sdk } from "../_core/sdk";
+import { classSessions, classProducts } from "../db/schema";
+import { eq, gte, and, lte } from "drizzle-orm";
 
 export const classSessionsRouter = Router();
 
-/**
- * GET /admin/class-sessions/:classProductId
- * List all sessions for a class product
- */
-classSessionsRouter.get("/:classProductId", async (req, res) => {
+// ---------------------------------------------------------
+// GET all sessions (optionally filter by date)
+// ---------------------------------------------------------
+classSessionsRouter.get("/", async (req, res) => {
   try {
-    await sdk.requireAdmin(req);
+    const { date } = req.query;
 
-    const classProductId = Number(req.params.classProductId);
+    let query = db.select().from(classSessions);
 
-    const sessions = await db
-      .select()
-      .from(classSessions)
-      .where(eq(classSessions.classProductId, classProductId));
+    if (date) {
+      const start = new Date(String(date));
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
 
-    return res.json(sessions);
+      query = db
+        .select()
+        .from(classSessions)
+        .where(
+          and(
+            gte(classSessions.startTime, start),
+            lte(classSessions.startTime, end)
+          )
+        );
+    }
+
+    const results = await query;
+    return res.json(results);
   } catch (err) {
-    console.error("SESSION LIST ERROR", err);
-    return res.status(401).json({ error: "Unauthorized" });
+    console.error("CLASS SESSION LIST ERROR", err);
+    return res.status(500).json({ error: "Failed to load sessions" });
   }
 });
 
-/**
- * POST /admin/class-sessions
- * Create a session
- */
+// ---------------------------------------------------------
+// CREATE session
+// ---------------------------------------------------------
 classSessionsRouter.post("/", async (req, res) => {
   try {
-    await sdk.requireAdmin(req);
+    const { classProductId, startTime, endTime, seatsTotal } = req.body;
 
-    const {
-      classProductId,
-      startTime,
-      endTime,
-      seatsTotal,
-    } = req.body ?? {};
+    // Verify class product exists
+    const productExists = await db
+      .select()
+      .from(classProducts)
+      .where(eq(classProducts.id, classProductId))
+      .then((r) => r[0]);
 
-    if (!classProductId || !startTime || !seatsTotal) {
-      return res.status(400).json({
-        error: "Missing required fields",
-      });
-    }
+    if (!productExists)
+      return res.status(400).json({ error: "Invalid classProductId" });
 
-    await db.insert(classSessions).values({
-      classProductId,
-      startTime,
-      endTime,
-      seatsTotal,
-      seatsAvailable: seatsTotal, // start with all seats free
-    });
+    const session = await db
+      .insert(classSessions)
+      .values({
+        classProductId,
+        startTime,
+        endTime,
+        seatsTotal,
+        seatsAvailable: seatsTotal,
+      })
+      .returning();
 
-    return res.json({ success: true });
+    return res.json(session[0]);
   } catch (err) {
-    console.error("SESSION CREATE ERROR", err);
+    console.error("CLASS SESSION CREATE ERROR", err);
     return res.status(500).json({ error: "Failed to create session" });
   }
 });
 
-/**
- * PUT /admin/class-sessions/:id
- * Update a session (time or seat count)
- */
+// ---------------------------------------------------------
+// UPDATE session
+// ---------------------------------------------------------
 classSessionsRouter.put("/:id", async (req, res) => {
   try {
-    await sdk.requireAdmin(req);
-
     const id = Number(req.params.id);
-    const { startTime, endTime, seatsTotal, seatsAvailable } = req.body ?? {};
+    const { startTime, endTime, seatsTotal, seatsAvailable } = req.body;
 
-    await db
+    const updated = await db
       .update(classSessions)
       .set({
         startTime,
@@ -83,11 +89,12 @@ classSessionsRouter.put("/:id", async (req, res) => {
         seatsTotal,
         seatsAvailable,
       })
-      .where(eq(classSessions.id, id));
+      .where(eq(classSessions.id, id))
+      .returning();
 
-    return res.json({ success: true });
+    return res.json(updated[0]);
   } catch (err) {
-    console.error("SESSION UPDATE ERROR", err);
+    console.error("CLASS SESSION UPDATE ERROR", err);
     return res.status(500).json({ error: "Failed to update session" });
   }
 });
