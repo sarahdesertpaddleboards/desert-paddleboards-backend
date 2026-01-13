@@ -16,7 +16,7 @@ drizzle/*
 !drizzle/*.sql
 
 # Build output
-dist/
+
 tmp/
 .cache/
 
