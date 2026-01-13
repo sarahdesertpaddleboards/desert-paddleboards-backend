@@ -23,7 +23,7 @@ import { giftCertificatesRouter } from "../routers/gift-certificates";
 import { shippingRouter } from "../routers/shipping";
 import { classProductsRouter } from "../routers/class-products";
 import { classSessionsRouter } from "../routers/class-sessions";
-
+import publicProducts from "../routers/public-products";
 
 
 console.log("🔥 CLEAN EXPRESS API INITIALIZING…");
@@ -86,11 +86,11 @@ async function startServer() {
   // -----------------------------------------------------
   // PUBLIC ROUTES
   // -----------------------------------------------------
-  app.use("/products", productsRouter);
+  app.use("/products/public", publicProducts);
   app.use("/class-products", classProductsRouter);
   app.use("/class-sessions", classSessionsRouter);
-  
 
+  app.use("/products", productsRouter);
 app.use("/gift-certificates", giftCertificatesRouter);
 app.use("/shipping", shippingRouter);
 

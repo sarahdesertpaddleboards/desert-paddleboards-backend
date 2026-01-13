@@ -2,8 +2,6 @@
 ├── Backend structure.txt
 ├── backendstructure.txt
 ├── cookies.txt
-├── dist
-│   └── index.js
 ├── drizzle
 │   ├── 0000_large_dark_phoenix.sql
 │   ├── 0001_solid_leech.sql
@@ -127,4 +125,4 @@
 ├── tsconfig.json
 └── vercel.json
 
-45 directories, 83 files
+44 directories, 82 files
