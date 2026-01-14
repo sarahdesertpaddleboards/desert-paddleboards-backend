@@ -9,7 +9,7 @@ import { adminOrdersRouter } from "../routers/admin-orders";
 import { adminProductsRouter } from "../routers/admin-products";
 
 
-import { productsRouter } from "../routers/products";
+
 import { checkoutRouter } from "../routers/checkout";
 
 import { downloadsRouter } from "../downloads/downloads.router";
@@ -21,10 +21,10 @@ import { eq } from "drizzle-orm";
 
 import { giftCertificatesRouter } from "../routers/gift-certificates";
 import { shippingRouter } from "../routers/shipping";
-import { classProductsRouter } from "../routers/class-products";
-import { classSessionsRouter } from "../routers/class-sessions";
-import publicProducts from "../routers/public-products";
 
+
+import { publicStoreRouter } from "../routers/public-store";
+import { publicClassesRouter } from "../routers/public-classes";
 
 console.log("🔥 CLEAN EXPRESS API INITIALIZING…");
 
@@ -83,14 +83,16 @@ async function startServer() {
   app.use("/admin/class-sessions", classSessionsRouter);
   
 
-  // -----------------------------------------------------
-  // PUBLIC ROUTES
-  // -----------------------------------------------------
-  app.use("/products/public", publicProducts);
-  app.use("/class-products", classProductsRouter);
-  app.use("/class-sessions", classSessionsRouter);
 
-  app.use("/products", productsRouter);
+// -----------------------------------------------------
+// PUBLIC ROUTES
+// -----------------------------------------------------
+
+
+app.use("/store", publicStoreRouter);      // /store/products
+app.use("/classes", publicClassesRouter);  // /classes/products etc.
+
+
 app.use("/gift-certificates", giftCertificatesRouter);
 app.use("/shipping", shippingRouter);
 
