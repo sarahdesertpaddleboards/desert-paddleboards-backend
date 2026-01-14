@@ -1,84 +1,45 @@
-// server/routers/checkout.ts
-// Unified checkout for all product types + class session support
-
 import { Router } from "express";
-import { db } from "../db";
-import { products, classSessions } from "../db/schema";
-import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import { db } from "../db";
+import { purchases } from "../db/schema";
 
-export const checkoutRouter = Router();
+const router = Router();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2024-06-20",
 });
 
-checkoutRouter.post("/", async (req, res) => {
+// POST /checkout/create
+router.post("/create", async (req, res) => {
   try {
-    const { productKey, sessionId } = req.body;
+    const { productId, productType, quantity, email, name } = req.body;
 
-    if (!productKey) {
-      return res.status(400).json({ error: "Missing productKey" });
-    }
+    // You can expand this later depending on store/class product types
 
-    const product = await db
-      .select()
-      .from(products)
-      .where(eq(products.productKey, productKey))
-      .limit(1)
-      .then((r) => r[0]);
-
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-
-    // CLASS SESSION VALIDATION
-    let session = null;
-
-    if (sessionId) {
-      session = await db
-        .select()
-        .from(classSessions)
-        .where(eq(classSessions.id, sessionId))
-        .limit(1)
-        .then((r) => r[0]);
-
-      if (!session) {
-        return res.status(400).json({ error: "Session not found" });
-      }
-
-      if (session.seatsAvailable < 1) {
-        return res.status(400).json({ error: "This session is sold out" });
-      }
-    }
-
-    // STRIPE SESSION CREATION
-    const stripeSession = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+    const session = await stripe.checkout.sessions.create({
+      customer_email: email,
       line_items: [
         {
           price_data: {
             currency: "usd",
-            unit_amount: product.price,
+            unit_amount: productId.price,
             product_data: {
-              name: product.name,
+              name,
             },
           },
-          quantity: 1,
+          quantity,
         },
       ],
-      metadata: {
-        productId: product.id,
-        sessionId: session?.id || "",
-        productKey,
-      },
+      mode: "payment",
+      success_url: `${process.env.FRONTEND_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_BASE_URL}/cancel`,
     });
 
-    return res.json({ url: stripeSession.url });
+    res.json({ url: session.url });
   } catch (err) {
     console.error("CHECKOUT ERROR", err);
-    res.status(500).json({ error: "Something went wrong" });
+    res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
+
+export default router;
