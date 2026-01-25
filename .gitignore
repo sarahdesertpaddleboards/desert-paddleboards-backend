@@ -2,10 +2,6 @@
 node_modules/
 npm-debug.log
 pnpm-debug.log
-node_modules/.modules.yaml
-node_modules/.pnpm-workspace-state-v1.json
-node_modules/.pnpm/lock.yaml
-node_modules/.pnpm/node_modules/ms
 
 # Env
 .env
@@ -36,5 +32,6 @@ tmp/
 server/_legacy/
 Backend structure.txt
 
-dist/index.js
-dist/seed.js
+dist/
+node_modules/
+dist/
