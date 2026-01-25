@@ -111,6 +111,7 @@ export const shippingAddresses = mysqlTable("shipping_addresses", {
 export const classProducts = mysqlTable("class_products", {
   id: int("id").primaryKey().autoincrement(),
   productKey: varchar("product_key", { length: 128 }),
+  productType: varchar("product_type", { length: 50 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   price: int("price").notNull(),
