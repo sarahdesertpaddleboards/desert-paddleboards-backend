@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch server/_core/index.ts",
-    "build": "esbuild server/_core/index.ts --bundle --platform=node --packages=external --format=esm --outdir=dist",
+   "build": "esbuild server/_core/index.ts --bundle --platform=node --packages=external --format=esm --outdir=dist && esbuild server/seed.ts --bundle --platform=node --packages=external --format=esm --outfile=dist/seed.js",
     "start": "NODE_ENV=production node dist/index.js",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts"
@@ -13,7 +13,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
     "@aws-sdk/s3-request-presigner": "^3.693.0",
-    "@trpc/server": "^11.6.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "cookie": "^1.1.1",
@@ -23,7 +22,6 @@
     "drizzle-orm": "^0.44.5",
     "express": "^4.21.2",
     "jose": "6.1.0",
-    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.15.0",
     "nanoid": "^5.1.6",
     "resend": "^6.5.2",
@@ -34,7 +32,6 @@
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "4.17.21",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.7.0",
     "drizzle-kit": "^0.31.4",
     "esbuild": "^0.25.0",
