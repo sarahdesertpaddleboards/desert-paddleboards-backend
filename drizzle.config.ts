@@ -5,6 +5,6 @@ export default {
   schema: "./server/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: "mysql://root:XcsNyUgkDfgMFmXsaMolMEQJOibWTxIY@crossover.proxy.rlwy.net:24535/railway"
-  }
+    url: process.env.DATABASE_URL!, // <--- also safer than hardcoding
+  },
 } satisfies Config;

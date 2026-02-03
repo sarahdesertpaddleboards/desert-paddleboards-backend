@@ -1,1 +1,0 @@
-ALTER TABLE `orders` ADD `fulfilled_at` timestamp;
