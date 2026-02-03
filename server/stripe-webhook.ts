@@ -48,52 +48,59 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   // 2. HANDLE CHECKOUT SUCCESS
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const metadata = session.metadata || {};
-    const productKey = metadata.productKey;
-    const productType = metadata.type; // digital | class | merch | gift
+  // 1) GLOBAL IDEMPOTENCY (orders.stripeEventId exists in real DB)
+const existingEvent = await db
+.select({ id: orders.id })
+.from(orders)
+.where(eq(orders.stripeEventId, event.id))
+.limit(1)
+.then(r => r[0]);
 
-    if (!productKey) {
-      console.error("❌ Missing productKey on session");
-      return res.status(400).end();
-    }
+if (existingEvent) {
+console.log("🔁 Duplicate webhook ignored:", event.id);
+return res.json({ received: true });
+}
 
-    // [A] CREATE ORDER RECORD
-    await db.insert(orders).values({
-      id: session.id,
-      productKey,
-      amount: session.amount_total!,
-      currency: session.currency!,
-      status: "fulfilled",
-      customerEmail: session.customer_details?.email ?? null,
-      stripeEventId: event.id,
-      raw: session,
-      fulfilledAt: new Date(),
-    });
+const session = event.data.object as Stripe.Checkout.Session;
+const metadata = session.metadata || {};
+const productKey = metadata.productKey;
+const productType = metadata.type; // "digital" | "gift" | "merch" | "booking" etc
 
-    // [B] PURCHASE RECORD (idempotent)
-    const existingPurchase = await db
-      .select()
-      .from(purchases)
-      .where(eq(purchases.stripeSessionId, session.id))
-      .limit(1)
-      .then((r) => r[0]);
+if (!productKey) {
+console.error("❌ Missing productKey on session");
+return res.status(400).end();
+}
 
-    let purchaseRecord;
+// 2) CREATE ORDER RECORD (canonical)
+await db.insert(orders).values({
+id: session.id,
+productKey,
+amount: session.amount_total ?? 0,
+currency: session.currency ?? "usd",
+status: "fulfilled",
+customerEmail: session.customer_details?.email ?? null,
+stripeEventId: event.id,
+raw: JSON.stringify(session),
+fulfilledAt: new Date(),
+});
 
-    if (!existingPurchase) {
-      const inserted = await db.insert(purchases).values({
-        stripeSessionId: session.id,
-        productKey,
-        amount: session.amount_total!,
-        currency: session.currency!,
-        customerEmail: session.customer_details?.email ?? null,
-      });
-      purchaseRecord = inserted[0];
-    } else {
-      purchaseRecord = existingPurchase;
-    }
+// 3) PURCHASE RECORD (idempotent by stripe_session_id unique)
+const existingPurchase = await db
+.select()
+.from(purchases)
+.where(eq(purchases.stripeSessionId, session.id))
+.limit(1)
+.then(r => r[0]);
+
+if (!existingPurchase) {
+await db.insert(purchases).values({
+  stripeSessionId: session.id,
+  productKey,
+  amount: session.amount_total ?? 0,
+  currency: session.currency ?? "usd",
+  customerEmail: session.customer_details?.email ?? null,
+});
+}
 
     // ---------------------------------------------------------
     // 3. FULFILLMENT LOGIC BASED ON PRODUCT TYPE
@@ -102,17 +109,16 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     // DIGITAL PRODUCT → issue secure download token
     if (productType === "digital") {
       const token = crypto.randomBytes(24).toString("hex");
-
+    
       await db.insert(downloads).values({
         orderId: session.id,
         productKey,
         token,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7), // 7 days
+        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
       });
-
+    
       console.log("💾 Digital download token created:", token);
     }
-
     // GIFT CERTIFICATE → store details + generate code
     if (productType === "gift") {
       const code = crypto.randomBytes(6).toString("hex").toUpperCase();
