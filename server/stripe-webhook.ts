@@ -35,26 +35,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
 
-  // 1) GLOBAL IDEMPOTENCY (orders.stripeEventId exists in real DB)
-  const existingEvent = await db
-  .select()
-  .from(stripeEvents)
-  .where(eq(stripeEvents.eventId, event.id))
-  .limit(1)
-
-if (existingEvent.length > 0) {
-  return res.status(200).json({ received: true })
-}
-
-const session = event.data.object as Stripe.Checkout.Session;
-const metadata = session.metadata || {};
-const productKey = metadata.productKey;
-const productType = metadata.type; // "digital" | "gift" | "merch" | "booking" etc
-
-if (!productKey) {
-console.error("❌ Missing productKey on session");
-return res.status(400).end();
-}
+  
 
 // 2) CREATE ORDER RECORD (canonical)
 await db.insert(orders).values({

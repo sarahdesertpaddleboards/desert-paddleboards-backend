@@ -4,9 +4,6 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// server/seed.ts
-import "dotenv/config";
-
 // server/db.ts
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -23,7 +20,8 @@ __export(schema_exports, {
   productOverrides: () => productOverrides,
   products: () => products,
   purchases: () => purchases,
-  shippingAddresses: () => shippingAddresses
+  shippingAddresses: () => shippingAddresses,
+  venues: () => venues
 });
 import {
   mysqlTable,
@@ -59,26 +57,38 @@ var productOverrides = mysqlTable("product_overrides", {
   overridePrice: int("override_price")
 });
 var orders = mysqlTable("orders", {
-  id: int("id").primaryKey().autoincrement(),
-  email: varchar("email", { length: 255 }).notNull(),
-  productId: int("product_id").notNull(),
-  quantity: int("quantity").default(1),
-  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
-  fulfilled: boolean("fulfilled").default(false),
-  createdAt: timestamp("created_at").defaultNow()
+  id: varchar("id", { length: 255 }).primaryKey(),
+  // Stripe session id (cs_...)
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  amount: int("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  // "paid" | "fulfilled" etc
+  customerEmail: varchar("customer_email", { length: 255 }),
+  stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
+  // idempotency key
+  raw: text("raw").notNull(),
+  // store JSON as string to avoid mysql json typing issues in app layer
+  fulfilledAt: timestamp("fulfilled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 var purchases = mysqlTable("purchases", {
   id: int("id").primaryKey().autoincrement(),
-  productId: int("product_id").notNull(),
-  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
-  email: varchar("email", { length: 255 }),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }).notNull(),
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  amount: int("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow()
 });
 var downloads = mysqlTable("downloads", {
   id: int("id").primaryKey().autoincrement(),
-  purchaseId: int("purchase_id").notNull(),
-  fileKey: varchar("file_key", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow()
+  orderId: varchar("order_id", { length: 255 }).notNull(),
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull(),
+  usedAt: timestamp("used_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 var giftCertificates = mysqlTable("gift_certificates", {
   id: int("id").primaryKey().autoincrement(),
@@ -99,9 +109,32 @@ var shippingAddresses = mysqlTable("shipping_addresses", {
   postalCode: varchar("postal_code", { length: 50 }).notNull(),
   country: varchar("country", { length: 100 }).notNull()
 });
+var venues = mysqlTable("venues", {
+  id: int("id").primaryKey().autoincrement(),
+  // Stable key for URLs and matching during seeding
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  // Display fields
+  name: varchar("name", { length: 255 }).notNull(),
+  addressLine: varchar("address_line", { length: 255 }).notNull(),
+  // "5445 N. Hayden Road"
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 20 }).notNull(),
+  // "AZ", "CA"
+  postalCode: varchar("postal_code", { length: 20 }),
+  // Optional callouts/notes like “NEW SCOTTSDALE LOCATION!” or “We provide blankets…”
+  callout: text("callout"),
+  notes: text("notes"),
+  // We'll need this later for correct calendar display and checkout cutoff times
+  timezone: varchar("timezone", { length: 64 }).notNull().default("America/Phoenix"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
 var classProducts = mysqlTable("class_products", {
   id: int("id").primaryKey().autoincrement(),
-  productKey: varchar("product_key", { length: 128 }),
+  // Make this notNull so productKey is reliable and seedable
+  productKey: varchar("product_key", { length: 128 }).notNull(),
+  productType: varchar("product_type", { length: 50 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   price: int("price").notNull(),
@@ -115,6 +148,9 @@ var classProducts = mysqlTable("class_products", {
 var classSessions = mysqlTable("class_sessions", {
   id: int("id").primaryKey().autoincrement(),
   classProductId: int("class_product_id").notNull().references(() => classProducts.id),
+  // New: venueId is nullable for now, so old data does not break.
+  // After we seed properly, we can backfill and make it notNull.
+  venueId: int("venue_id").references(() => venues.id),
   startTime: datetime("start_time").notNull(),
   endTime: datetime("end_time").notNull(),
   seatsTotal: int("seats_total").notNull(),
@@ -135,36 +171,40 @@ var db = drizzle(pool, {
 });
 
 // server/seed.ts
+import { eq as eq2 } from "drizzle-orm";
 async function seed() {
   console.log("\u{1F331} Seeding database...");
   await db.delete(classSessions);
   await db.delete(classProducts);
-  await db.delete(productOverrides);
-  const paddleClass = await db.insert(classProducts).values({
-    productKey: "beginner-paddle",
+  const productKey = "beginner-paddle";
+  await db.insert(classProducts).values({
+    productKey,
     name: "Beginner Paddle Boarding",
     description: "Perfect for newcomers",
-    price_cents: 7500,
+    price: 7500,
     currency: "USD",
+    capacity: 10,
     imageUrl: "https://images.desert-paddleboards.com/beginner.jpg",
-    capacity: 10
-  }).returning();
+    active: true,
+    productType: "class"
+  });
+  const [product] = await db.select().from(classProducts).where(eq2(classProducts.productKey, productKey)).limit(1);
+  if (!product) {
+    throw new Error("Seed failed: could not re-fetch class product after insert");
+  }
+  const now = /* @__PURE__ */ new Date();
+  const start = new Date(now.getTime());
+  const end = new Date(now.getTime() + 90 * 60 * 1e3);
   await db.insert(classSessions).values({
-    classProductKey: "beginner-paddle",
-    startTime: new Date(Date.now() + 864e5).toISOString(),
-    availability: 10
+    classProductId: product.id,
+    startTime: start,
+    endTime: end,
+    seatsTotal: product.capacity ?? 10,
+    seatsAvailable: product.capacity ?? 10
   });
-  await db.insert(productOverrides).values({
-    key: "gift-card-50",
-    type: "gift-card",
-    name: "Gift Card - 50 USD",
-    description: "Perfect gift!",
-    price_cents: 5e3,
-    currency: "USD"
-  });
-  console.log("\u{1F331} Done.");
+  console.log("\u2705 Seed complete: class_products + class_sessions");
 }
-seed().catch((err) => {
-  console.error(err);
+seed().then(() => process.exit(0)).catch((err) => {
+  console.error("\u274C Seed failed:", err);
   process.exit(1);
 });

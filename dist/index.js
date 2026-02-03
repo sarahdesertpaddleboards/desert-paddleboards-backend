@@ -6,7 +6,7 @@ var __export = (target, all) => {
 
 // server/_core/index.ts
 import "dotenv/config";
-import express from "express";
+import express2 from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
@@ -31,7 +31,8 @@ __export(schema_exports, {
   productOverrides: () => productOverrides,
   products: () => products,
   purchases: () => purchases,
-  shippingAddresses: () => shippingAddresses
+  shippingAddresses: () => shippingAddresses,
+  venues: () => venues
 });
 import {
   mysqlTable,
@@ -67,26 +68,38 @@ var productOverrides = mysqlTable("product_overrides", {
   overridePrice: int("override_price")
 });
 var orders = mysqlTable("orders", {
-  id: int("id").primaryKey().autoincrement(),
-  email: varchar("email", { length: 255 }).notNull(),
-  productId: int("product_id").notNull(),
-  quantity: int("quantity").default(1),
-  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
-  fulfilled: boolean("fulfilled").default(false),
-  createdAt: timestamp("created_at").defaultNow()
+  id: varchar("id", { length: 255 }).primaryKey(),
+  // Stripe session id (cs_...)
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  amount: int("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  // "paid" | "fulfilled" etc
+  customerEmail: varchar("customer_email", { length: 255 }),
+  stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
+  // idempotency key
+  raw: text("raw").notNull(),
+  // store JSON as string to avoid mysql json typing issues in app layer
+  fulfilledAt: timestamp("fulfilled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 var purchases = mysqlTable("purchases", {
   id: int("id").primaryKey().autoincrement(),
-  productId: int("product_id").notNull(),
-  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
-  email: varchar("email", { length: 255 }),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }).notNull(),
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  amount: int("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow()
 });
 var downloads = mysqlTable("downloads", {
   id: int("id").primaryKey().autoincrement(),
-  purchaseId: int("purchase_id").notNull(),
-  fileKey: varchar("file_key", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow()
+  orderId: varchar("order_id", { length: 255 }).notNull(),
+  productKey: varchar("product_key", { length: 64 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull(),
+  usedAt: timestamp("used_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 var giftCertificates = mysqlTable("gift_certificates", {
   id: int("id").primaryKey().autoincrement(),
@@ -107,9 +120,32 @@ var shippingAddresses = mysqlTable("shipping_addresses", {
   postalCode: varchar("postal_code", { length: 50 }).notNull(),
   country: varchar("country", { length: 100 }).notNull()
 });
+var venues = mysqlTable("venues", {
+  id: int("id").primaryKey().autoincrement(),
+  // Stable key for URLs and matching during seeding
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  // Display fields
+  name: varchar("name", { length: 255 }).notNull(),
+  addressLine: varchar("address_line", { length: 255 }).notNull(),
+  // "5445 N. Hayden Road"
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 20 }).notNull(),
+  // "AZ", "CA"
+  postalCode: varchar("postal_code", { length: 20 }),
+  // Optional callouts/notes like “NEW SCOTTSDALE LOCATION!” or “We provide blankets…”
+  callout: text("callout"),
+  notes: text("notes"),
+  // We'll need this later for correct calendar display and checkout cutoff times
+  timezone: varchar("timezone", { length: 64 }).notNull().default("America/Phoenix"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
 var classProducts = mysqlTable("class_products", {
   id: int("id").primaryKey().autoincrement(),
-  productKey: varchar("product_key", { length: 128 }),
+  // Make this notNull so productKey is reliable and seedable
+  productKey: varchar("product_key", { length: 128 }).notNull(),
+  productType: varchar("product_type", { length: 50 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   price: int("price").notNull(),
@@ -123,6 +159,9 @@ var classProducts = mysqlTable("class_products", {
 var classSessions = mysqlTable("class_sessions", {
   id: int("id").primaryKey().autoincrement(),
   classProductId: int("class_product_id").notNull().references(() => classProducts.id),
+  // New: venueId is nullable for now, so old data does not break.
+  // After we seed properly, we can backfill and make it notNull.
+  venueId: int("venue_id").references(() => venues.id),
   startTime: datetime("start_time").notNull(),
   endTime: datetime("end_time").notNull(),
   seatsTotal: int("seats_total").notNull(),
@@ -242,11 +281,11 @@ var SDKServer = class {
   async requireAdmin(req) {
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
-    const session = await this.verifySession(sessionCookie);
-    if (!session) {
+    const session2 = await this.verifySession(sessionCookie);
+    if (!session2) {
       throw ForbiddenError("Admin authentication required");
     }
-    return session;
+    return session2;
   }
 };
 var sdk = new SDKServer();
@@ -362,22 +401,71 @@ import { eq as eq4 } from "drizzle-orm";
 var router = Router3();
 router.get("/", async (_req, res) => {
   try {
-    const items = await db.select().from(productOverrides);
-    res.json(items);
+    const rows = await db.select({
+      id: products.id,
+      productKey: products.productKey,
+      type: products.type,
+      name: products.name,
+      description: products.description,
+      price: products.price,
+      currency: products.currency,
+      imageUrl: products.imageUrl,
+      active: products.active,
+      // Optional overrides
+      overrideName: productOverrides.overrideName,
+      overridePrice: productOverrides.overridePrice
+    }).from(products).leftJoin(productOverrides, eq4(productOverrides.productId, products.id));
+    const items = rows.filter((r) => r.active !== false).map((r) => ({
+      id: r.id,
+      productKey: r.productKey,
+      type: r.type,
+      name: r.overrideName ?? r.name,
+      description: r.description,
+      price: r.overridePrice ?? r.price,
+      currency: r.currency ?? "usd",
+      imageUrl: r.imageUrl,
+      active: r.active ?? true
+    }));
+    return res.json(items);
   } catch (err) {
     console.error("STORE PUBLIC LIST ERROR", err);
-    res.status(500).json({ error: "Failed to load store products" });
+    return res.status(500).json({ error: "Failed to load store products" });
   }
 });
 router.get("/:key", async (req, res) => {
   try {
     const key = req.params.key;
-    const item = await db.select().from(productOverrides).where(eq4(productOverrides.productKey, key)).then((r) => r[0]);
-    if (!item) return res.status(404).json({ error: "Not found" });
-    res.json(item);
+    const rows = await db.select({
+      id: products.id,
+      productKey: products.productKey,
+      type: products.type,
+      name: products.name,
+      description: products.description,
+      price: products.price,
+      currency: products.currency,
+      imageUrl: products.imageUrl,
+      active: products.active,
+      overrideName: productOverrides.overrideName,
+      overridePrice: productOverrides.overridePrice
+    }).from(products).leftJoin(productOverrides, eq4(productOverrides.productId, products.id)).where(eq4(products.productKey, key)).limit(1);
+    const r = rows[0];
+    if (!r || r.active === false) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    return res.json({
+      id: r.id,
+      productKey: r.productKey,
+      type: r.type,
+      name: r.overrideName ?? r.name,
+      description: r.description,
+      price: r.overridePrice ?? r.price,
+      currency: r.currency ?? "usd",
+      imageUrl: r.imageUrl,
+      active: r.active ?? true
+    });
   } catch (err) {
     console.error("STORE PUBLIC GET ERROR", err);
-    res.status(500).json({ error: "Failed to load item" });
+    return res.status(500).json({ error: "Failed to load item" });
   }
 });
 var store_public_default = router;
@@ -409,8 +497,14 @@ router2.get("/", requireAdmin, async (_req, res) => {
 router2.post("/", requireAdmin, async (req, res) => {
   try {
     const data = req.body;
-    const [item] = await db.insert(productOverrides).values(data).returning();
-    res.json(item);
+    await db.insert(productOverrides).values(data);
+    if (data?.id) {
+      const [item] = await db.select().from(productOverrides).where(eq5(productOverrides.id, Number(data.id))).limit(1);
+      return res.json(item ?? null);
+    }
+    const rows = await db.select().from(productOverrides);
+    const last = rows[rows.length - 1] ?? null;
+    res.json(last);
   } catch (err) {
     console.error("STORE ADMIN CREATE ERROR", err);
     res.status(500).json({ error: "Failed to create store product" });
@@ -419,7 +513,12 @@ router2.post("/", requireAdmin, async (req, res) => {
 router2.patch("/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const [item] = await db.update(productOverrides).set(req.body).where(eq5(productOverrides.id, id)).returning();
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    await db.update(productOverrides).set(req.body).where(eq5(productOverrides.id, id));
+    const [item] = await db.select().from(productOverrides).where(eq5(productOverrides.id, id)).limit(1);
+    if (!item) return res.status(404).json({ error: "Not found" });
     res.json(item);
   } catch (err) {
     console.error("STORE ADMIN UPDATE ERROR", err);
@@ -428,6 +527,9 @@ router2.patch("/:id", requireAdmin, async (req, res) => {
 });
 router2.delete("/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
   await db.delete(productOverrides).where(eq5(productOverrides.id, id));
   res.json({ ok: true });
 });
@@ -458,16 +560,31 @@ router4.get("/", requireAdmin, async (_req, res) => {
   res.json(rows);
 });
 router4.post("/", requireAdmin, async (req, res) => {
-  const [row] = await db.insert(classProducts).values(req.body).returning();
-  res.json(row);
+  await db.insert(classProducts).values(req.body);
+  const bodyAny = req.body;
+  if (bodyAny?.productKey) {
+    const [row] = await db.select().from(classProducts).where(eq7(classProducts.productKey, bodyAny.productKey)).limit(1);
+    return res.json(row ?? null);
+  }
+  const rows = await db.select().from(classProducts);
+  const last = rows[rows.length - 1] ?? null;
+  res.json(last);
 });
 router4.patch("/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const [row] = await db.update(classProducts).set(req.body).where(eq7(classProducts.id, id)).returning();
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+  await db.update(classProducts).set(req.body).where(eq7(classProducts.id, id));
+  const [row] = await db.select().from(classProducts).where(eq7(classProducts.id, id)).limit(1);
+  if (!row) return res.status(404).json({ error: "Not found" });
   res.json(row);
 });
 router4.delete("/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
   await db.delete(classProducts).where(eq7(classProducts.id, id));
   res.json({ ok: true });
 });
@@ -475,17 +592,28 @@ var classes_admin_default = router4;
 
 // server/routers/sessions.public.ts
 import { Router as Router7 } from "express";
-import { eq as eq8 } from "drizzle-orm";
+import { eq as eq8, desc } from "drizzle-orm";
 var router5 = Router7();
 router5.get("/", async (_req, res) => {
-  const list = await db.select().from(classSessions);
-  res.json(list);
-});
-router5.get("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const row = await db.select().from(classSessions).where(eq8(classSessions.id, id)).then((r) => r[0]);
-  if (!row) return res.status(404).json({ error: "Not found" });
-  res.json(row);
+  try {
+    const rows = await db.select({
+      id: classSessions.id,
+      classProductId: classSessions.classProductId,
+      startTime: classSessions.startTime,
+      endTime: classSessions.endTime,
+      seatsTotal: classSessions.seatsTotal,
+      seatsAvailable: classSessions.seatsAvailable,
+      venueId: classSessions.venueId,
+      venueName: venues.name,
+      venueCity: venues.city,
+      venueState: venues.state,
+      venueSlug: venues.slug
+    }).from(classSessions).leftJoin(venues, eq8(classSessions.venueId, venues.id)).orderBy(desc(classSessions.startTime));
+    res.json(rows);
+  } catch (err) {
+    console.error("SESSIONS PUBLIC LIST ERROR", err);
+    res.status(500).json({ error: "Failed to load sessions" });
+  }
 });
 var sessions_public_default = router5;
 
@@ -498,72 +626,331 @@ router6.get("/", requireAdmin, async (_req, res) => {
   res.json(list);
 });
 router6.post("/", requireAdmin, async (req, res) => {
-  const [row] = await db.insert(classSessions).values(req.body).returning();
-  res.json(row);
+  await db.insert(classSessions).values(req.body);
+  const bodyAny = req.body;
+  if (bodyAny?.id) {
+    const [row] = await db.select().from(classSessions).where(eq9(classSessions.id, Number(bodyAny.id))).limit(1);
+    return res.json(row ?? null);
+  }
+  const rows = await db.select().from(classSessions);
+  const last = rows[rows.length - 1] ?? null;
+  res.json(last);
 });
 router6.patch("/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const [row] = await db.update(classSessions).set(req.body).where(eq9(classSessions.id, id)).returning();
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+  await db.update(classSessions).set(req.body).where(eq9(classSessions.id, id));
+  const [row] = await db.select().from(classSessions).where(eq9(classSessions.id, id)).limit(1);
+  if (!row) return res.status(404).json({ error: "Not found" });
   res.json(row);
 });
 router6.delete("/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
   await db.delete(classSessions).where(eq9(classSessions.id, id));
   res.json({ ok: true });
 });
 var sessions_admin_default = router6;
 
-// server/routers/checkout.ts
+// server/routers/stripe.webhook.route.ts
 import { Router as Router9 } from "express";
+import express from "express";
+
+// server/stripe-webhook.ts
 import Stripe from "stripe";
-var router7 = Router9();
+import { eq as eq10 } from "drizzle-orm";
+
+// server/_core/email.ts
+import { Resend } from "resend";
+var resend = new Resend(process.env.RESEND_API_KEY);
+async function sendOrderConfirmationEmail(args) {
+  const { order, purchases: purchases2 } = args;
+  if (!order.customerEmail) {
+    console.warn(
+      "EMAIL: Order has no customer email, skipping",
+      order.id
+    );
+    return;
+  }
+  const deliveryLines = purchases2.map((purchase) => {
+    return `
+      <li>
+        <strong>${purchase.productKey}</strong><br/>
+        <a href="${process.env.PUBLIC_API_BASE_URL}/downloads/${purchase.id}">
+          Download your purchase
+        </a>
+      </li>
+    `;
+  });
+  const html = `
+    <div style="font-family: system-ui, sans-serif; line-height: 1.6;">
+      <h2>Thank you for your purchase \u{1F30A}</h2>
+
+      <p>
+        Your order has been successfully processed.
+      </p>
+
+      <p>
+        <strong>Order ID:</strong><br/>
+        ${order.id}
+      </p>
+
+      <h3>Your items</h3>
+      <ul>
+        ${deliveryLines.join("")}
+      </ul>
+
+      <p style="margin-top: 24px;">
+        If you have any issues, just reply to this email.
+      </p>
+
+      <p>
+        \u2014 Desert Paddleboards
+      </p>
+    </div>
+  `;
+  await resend.emails.send({
+    from: "Desert Paddleboards <info@desertpaddleboards.com>",
+    to: order.customerEmail,
+    subject: "Your Desert Paddleboards purchase is ready",
+    html
+  });
+  console.log("EMAIL: Order confirmation sent", order.id);
+}
+
+// server/stripe-webhook.ts
+import crypto from "crypto";
 var stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2023-10-16"
+});
+async function handleStripeWebhook(req, res) {
+  const sig = req.headers["stripe-signature"];
+  if (!sig) return res.status(400).send("Missing Stripe signature");
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error("\u274C Invalid Stripe signature", err);
+    return res.status(400).send("Invalid signature");
+  }
+  await db.insert(orders).values({
+    id: session.id,
+    productKey,
+    amount: session.amount_total ?? 0,
+    currency: session.currency ?? "usd",
+    status: "fulfilled",
+    customerEmail: session.customer_details?.email ?? null,
+    stripeEventId: event.id,
+    raw: JSON.stringify(session),
+    fulfilledAt: /* @__PURE__ */ new Date()
+  });
+  const existingPurchase = await db.select().from(purchases).where(eq10(purchases.stripeSessionId, session.id)).limit(1).then((r) => r[0]);
+  if (!existingPurchase) {
+    await db.insert(purchases).values({
+      stripeSessionId: session.id,
+      productKey,
+      amount: session.amount_total ?? 0,
+      currency: session.currency ?? "usd",
+      customerEmail: session.customer_details?.email ?? null
+    });
+  }
+  if (productType === "digital") {
+    const token = crypto.randomBytes(24).toString("hex");
+    await db.insert(downloads).values({
+      orderId: session.id,
+      productKey,
+      token,
+      expiresAt: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 7)
+    });
+    console.log("\u{1F4BE} Digital download token created:", token);
+  }
+  if (productType === "gift") {
+    const code = crypto.randomBytes(6).toString("hex").toUpperCase();
+    await db.insert(giftCertificates).values({
+      purchaseId: purchaseRecord.id,
+      productId: productKey,
+      // productKey is string; adjust schema if needed
+      recipientName: metadata.recipientName || null,
+      recipientEmail: metadata.recipientEmail || null,
+      message: metadata.message || null,
+      generatedCode: code
+    });
+    console.log("\u{1F381} Gift certificate created with code:", code);
+  }
+  if (productType === "merch") {
+    await db.insert(shippingAddresses).values({
+      purchaseId: purchaseRecord.id,
+      productId: productKey,
+      fullName: metadata.shipping_fullName ?? "",
+      addressLine1: metadata.shipping_address1 ?? "",
+      addressLine2: metadata.shipping_address2 ?? "",
+      city: metadata.shipping_city ?? "",
+      state: metadata.shipping_state ?? "",
+      postalCode: metadata.shipping_postal ?? "",
+      country: metadata.shipping_country ?? ""
+    });
+    console.log("\u{1F4E6} Shipping address stored for merch order");
+  }
+  try {
+    const relatedPurchases = await db.select().from(purchases).where(eq10(purchases.stripeSessionId, session.id));
+    await sendOrderConfirmationEmail({
+      order: {
+        id: session.id,
+        customerEmail: session.customer_details?.email ?? null
+      },
+      purchases: relatedPurchases
+    });
+  } catch (err) {
+    console.error("\u{1F4E7} Email send error (ignored):", err);
+  }
+  console.log("\u2705 Order fulfilled:", session.id);
+  return res.json({ received: true });
+}
+
+// server/routers/stripe.webhook.route.ts
+var router7 = Router9();
+router7.post(
+  "/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
+var stripe_webhook_route_default = router7;
+
+// server/routers/checkout.success.ts
+import { Router as Router10 } from "express";
+import { eq as eq11 } from "drizzle-orm";
+var router8 = Router10();
+router8.get("/success/:sessionId", async (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const order = await db.select().from(orders).where(eq11(orders.id, sessionId)).limit(1).then((r) => r[0]);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    let type = "unknown";
+    try {
+      const raw = JSON.parse(order.raw);
+      type = raw?.metadata?.type || "unknown";
+    } catch {
+    }
+    const deliveries = [];
+    if (type === "digital") {
+      const dl = await db.select().from(downloads).where(eq11(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
+      deliveries.push({
+        purchaseId: dl?.id ?? 0,
+        productKey: order.productKey,
+        type: "digital"
+      });
+    } else if (type === "gift") {
+      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "gift" });
+    } else if (type === "merch") {
+      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "merch" });
+    } else if (type === "booking") {
+      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "booking" });
+    }
+    return res.json({
+      sessionId: order.id,
+      status: order.status,
+      customerEmail: order.customerEmail ?? null,
+      deliveries
+    });
+  } catch (err) {
+    console.error("CHECKOUT SUCCESS ERROR", err);
+    return res.status(500).json({ error: "Failed to load order" });
+  }
+});
+var checkout_success_default = router8;
+
+// server/routers/checkout.ts
+import { Router as Router11 } from "express";
+import Stripe2 from "stripe";
+import { eq as eq12 } from "drizzle-orm";
+var router9 = Router11();
+var stripe2 = new Stripe2(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20"
 });
-router7.post("/create", async (req, res) => {
+router9.post("/create", async (req, res) => {
   try {
-    const { productId, productType, quantity, email, name } = req.body;
-    const session = await stripe.checkout.sessions.create({
-      customer_email: email,
+    const { productId, quantity, email } = req.body ?? {};
+    const id = Number(productId);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "productId must be a number" });
+    }
+    const qty = Number(quantity ?? 1);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
+      return res.status(400).json({ error: "quantity must be 1-20" });
+    }
+    const rows = await db.select({
+      id: products.id,
+      productKey: products.productKey,
+      type: products.type,
+      name: products.name,
+      price: products.price,
+      currency: products.currency,
+      active: products.active,
+      overrideName: productOverrides.overrideName,
+      overridePrice: productOverrides.overridePrice
+    }).from(products).leftJoin(productOverrides, eq12(productOverrides.productId, products.id)).where(eq12(products.id, id)).limit(1);
+    const p = rows[0];
+    if (!p || p.active === false) {
+      return res.status(404).json({ error: "Product not found or inactive" });
+    }
+    const itemName = (p.overrideName ?? p.name) || `Product ${p.productKey}`;
+    const unitAmount = Number(p.overridePrice ?? p.price);
+    const currency = (p.currency ?? "usd").toLowerCase();
+    if (!Number.isInteger(unitAmount) || unitAmount < 50) {
+      return res.status(400).json({ error: "Invalid product price" });
+    }
+    const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
+    const session2 = await stripe2.checkout.sessions.create({
+      customer_email: typeof email === "string" ? email : void 0,
+      mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
-            unit_amount: productId.price,
-            product_data: {
-              name
-            }
+            currency,
+            unit_amount: unitAmount,
+            product_data: { name: itemName }
           },
-          quantity
+          quantity: qty
         }
       ],
-      mode: "payment",
-      success_url: `${process.env.FRONTEND_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_BASE_URL}/cancel`
+      // CRITICAL: your stripe-webhook.ts expects these
+      metadata: {
+        productKey: p.productKey,
+        type: p.type
+        // "digital" | "gift" | "merch" | later "class_session"
+      },
+      success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendBaseUrl}/cancel`
     });
-    res.json({ url: session.url });
+    return res.json({ url: session2.url });
   } catch (err) {
     console.error("CHECKOUT ERROR", err);
-    res.status(500).json({ error: "Failed to create checkout session" });
+    return res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
-var checkout_default = router7;
+var checkout_default = router9;
 
 // server/_core/index.ts
 console.log("\u{1F525} CLEAN EXPRESS API INITIALIZING\u2026");
 async function startServer() {
-  const app = express();
+  const app = express2();
   const server = createServer(app);
   app.set("trust proxy", 1);
   app.use(cookieParser());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use("/api", stripe_webhook_route_default);
+  app.use(express2.json());
+  app.use(express2.urlencoded({ extended: true }));
   app.use(
     cors({
-      origin: [
-        "http://localhost:5173",
-        "https://desertpaddleboards.vercel.app"
-      ],
+      origin: ["http://localhost:5173", "https://desertpaddleboards.vercel.app"],
       credentials: true
     })
   );
@@ -576,6 +963,7 @@ async function startServer() {
   app.use("/classes/products", classes_public_default);
   app.use("/classes/sessions", sessions_public_default);
   app.use("/checkout", checkout_default);
+  app.use("/checkout", checkout_success_default);
   app.get("/health", (_req, res) => res.json({ ok: true }));
   const port = parseInt(process.env.PORT || "8080", 10);
   server.listen(port, () => console.log(`\u{1F680} Running on port ${port}`));
