@@ -16,6 +16,12 @@ import classesAdmin from "../routers/classes.admin";
 import sessionsPublic from "../routers/sessions.public";
 import sessionsAdmin from "../routers/sessions.admin";
 
+// ✅ FIXED PATH (match the other router imports)
+import stripeWebhookRouter from "../routers/stripe.webhook.route";
+
+// ✅ New: checkout success route (we'll create this file next)
+import checkoutSuccess from "../routers/checkout.success";
+
 import checkout from "../routers/checkout";
 
 console.log("🔥 CLEAN EXPRESS API INITIALIZING…");
@@ -27,15 +33,17 @@ async function startServer() {
   app.set("trust proxy", 1);
 
   app.use(cookieParser());
+
+  // ✅ Stripe webhook must be BEFORE express.json()
+  app.use("/api", stripeWebhookRouter);
+
+  // Normal parsers for everything else
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
   app.use(
     cors({
-      origin: [
-        "http://localhost:5173",
-        "https://desertpaddleboards.vercel.app"
-      ],
+      origin: ["http://localhost:5173", "https://desertpaddleboards.vercel.app"],
       credentials: true,
     })
   );
@@ -51,7 +59,10 @@ async function startServer() {
   app.use("/store/products", storePublic);
   app.use("/classes/products", classesPublic);
   app.use("/classes/sessions", sessionsPublic);
+
+  // Checkout routes
   app.use("/checkout", checkout);
+  app.use("/checkout", checkoutSuccess);
 
   // HEALTH CHECK
   app.get("/health", (_req, res) => res.json({ ok: true }));
