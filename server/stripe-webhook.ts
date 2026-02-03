@@ -34,31 +34,16 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     return res.status(400).send("Invalid signature");
   }
 
-  // 1. GLOBAL IDEMPOTENCY
-  const existingEvent = await db
-    .select()
-    .from(orders)
-    .where(eq(orders.stripeEventId, event.id))
-    .limit(1)
-    .then((r) => r[0]);
 
-  if (existingEvent) {
-    console.log("🔁 Duplicate webhook ignored:", event.id);
-    return res.json({ received: true });
-  }
-
-  // 2. HANDLE CHECKOUT SUCCESS
   // 1) GLOBAL IDEMPOTENCY (orders.stripeEventId exists in real DB)
-const existingEvent = await db
-.select({ id: orders.id })
-.from(orders)
-.where(eq(orders.stripeEventId, event.id))
-.limit(1)
-.then(r => r[0]);
+  const existingEvent = await db
+  .select()
+  .from(stripeEvents)
+  .where(eq(stripeEvents.eventId, event.id))
+  .limit(1)
 
-if (existingEvent) {
-console.log("🔁 Duplicate webhook ignored:", event.id);
-return res.json({ received: true });
+if (existingEvent.length > 0) {
+  return res.status(200).json({ received: true })
 }
 
 const session = event.data.object as Stripe.Checkout.Session;
@@ -177,4 +162,4 @@ await db.insert(purchases).values({
 
   // 5. ALWAYS ACKNOWLEDGE
   return res.json({ received: true });
-}
+
