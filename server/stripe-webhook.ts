@@ -158,8 +158,10 @@ await db.insert(purchases).values({
     }
 
     console.log("✅ Order fulfilled:", session.id);
-  }
+  
 
   // 5. ALWAYS ACKNOWLEDGE
   return res.json({ received: true });
+
+}
 
