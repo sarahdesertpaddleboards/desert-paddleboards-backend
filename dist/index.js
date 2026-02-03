@@ -281,11 +281,11 @@ var SDKServer = class {
   async requireAdmin(req) {
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
-    const session2 = await this.verifySession(sessionCookie);
-    if (!session2) {
+    const session = await this.verifySession(sessionCookie);
+    if (!session) {
       throw ForbiddenError("Admin authentication required");
     }
-    return session2;
+    return session;
   }
 };
 var sdk = new SDKServer();
@@ -662,74 +662,15 @@ import express from "express";
 
 // server/stripe-webhook.ts
 import Stripe from "stripe";
-import { eq as eq10 } from "drizzle-orm";
-
-// server/_core/email.ts
-import { Resend } from "resend";
-var resend = new Resend(process.env.RESEND_API_KEY);
-async function sendOrderConfirmationEmail(args) {
-  const { order, purchases: purchases2 } = args;
-  if (!order.customerEmail) {
-    console.warn(
-      "EMAIL: Order has no customer email, skipping",
-      order.id
-    );
-    return;
-  }
-  const deliveryLines = purchases2.map((purchase) => {
-    return `
-      <li>
-        <strong>${purchase.productKey}</strong><br/>
-        <a href="${process.env.PUBLIC_API_BASE_URL}/downloads/${purchase.id}">
-          Download your purchase
-        </a>
-      </li>
-    `;
-  });
-  const html = `
-    <div style="font-family: system-ui, sans-serif; line-height: 1.6;">
-      <h2>Thank you for your purchase \u{1F30A}</h2>
-
-      <p>
-        Your order has been successfully processed.
-      </p>
-
-      <p>
-        <strong>Order ID:</strong><br/>
-        ${order.id}
-      </p>
-
-      <h3>Your items</h3>
-      <ul>
-        ${deliveryLines.join("")}
-      </ul>
-
-      <p style="margin-top: 24px;">
-        If you have any issues, just reply to this email.
-      </p>
-
-      <p>
-        \u2014 Desert Paddleboards
-      </p>
-    </div>
-  `;
-  await resend.emails.send({
-    from: "Desert Paddleboards <info@desertpaddleboards.com>",
-    to: order.customerEmail,
-    subject: "Your Desert Paddleboards purchase is ready",
-    html
-  });
-  console.log("EMAIL: Order confirmation sent", order.id);
-}
-
-// server/stripe-webhook.ts
 import crypto from "crypto";
 var stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2023-10-16"
 });
 async function handleStripeWebhook(req, res) {
   const sig = req.headers["stripe-signature"];
-  if (!sig) return res.status(400).send("Missing Stripe signature");
+  if (!sig) {
+    return res.status(400).send("Missing Stripe signature");
+  }
   let event;
   try {
     event = stripe.webhooks.constructEvent(
@@ -738,30 +679,27 @@ async function handleStripeWebhook(req, res) {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("\u274C Invalid Stripe signature", err);
+    console.error("Invalid Stripe signature", err);
     return res.status(400).send("Invalid signature");
   }
-  await db.insert(orders).values({
-    id: session.id,
+  if (event.type !== "checkout.session.completed") {
+    return res.json({ received: true });
+  }
+  const session = event.data.object;
+  const metadata = session.metadata || {};
+  const productKey = metadata.productKey;
+  const productType = metadata.type;
+  if (!productKey) {
+    console.error("Missing productKey in metadata");
+    return res.status(400).json({ error: "Missing productKey" });
+  }
+  await db.insert(purchases).values({
+    stripeSessionId: session.id,
     productKey,
     amount: session.amount_total ?? 0,
     currency: session.currency ?? "usd",
-    status: "fulfilled",
-    customerEmail: session.customer_details?.email ?? null,
-    stripeEventId: event.id,
-    raw: JSON.stringify(session),
-    fulfilledAt: /* @__PURE__ */ new Date()
+    customerEmail: session.customer_details?.email ?? null
   });
-  const existingPurchase = await db.select().from(purchases).where(eq10(purchases.stripeSessionId, session.id)).limit(1).then((r) => r[0]);
-  if (!existingPurchase) {
-    await db.insert(purchases).values({
-      stripeSessionId: session.id,
-      productKey,
-      amount: session.amount_total ?? 0,
-      currency: session.currency ?? "usd",
-      customerEmail: session.customer_details?.email ?? null
-    });
-  }
   if (productType === "digital") {
     const token = crypto.randomBytes(24).toString("hex");
     await db.insert(downloads).values({
@@ -770,48 +708,9 @@ async function handleStripeWebhook(req, res) {
       token,
       expiresAt: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 7)
     });
-    console.log("\u{1F4BE} Digital download token created:", token);
+    console.log("Digital token created:", token);
   }
-  if (productType === "gift") {
-    const code = crypto.randomBytes(6).toString("hex").toUpperCase();
-    await db.insert(giftCertificates).values({
-      purchaseId: purchaseRecord.id,
-      productId: productKey,
-      // productKey is string; adjust schema if needed
-      recipientName: metadata.recipientName || null,
-      recipientEmail: metadata.recipientEmail || null,
-      message: metadata.message || null,
-      generatedCode: code
-    });
-    console.log("\u{1F381} Gift certificate created with code:", code);
-  }
-  if (productType === "merch") {
-    await db.insert(shippingAddresses).values({
-      purchaseId: purchaseRecord.id,
-      productId: productKey,
-      fullName: metadata.shipping_fullName ?? "",
-      addressLine1: metadata.shipping_address1 ?? "",
-      addressLine2: metadata.shipping_address2 ?? "",
-      city: metadata.shipping_city ?? "",
-      state: metadata.shipping_state ?? "",
-      postalCode: metadata.shipping_postal ?? "",
-      country: metadata.shipping_country ?? ""
-    });
-    console.log("\u{1F4E6} Shipping address stored for merch order");
-  }
-  try {
-    const relatedPurchases = await db.select().from(purchases).where(eq10(purchases.stripeSessionId, session.id));
-    await sendOrderConfirmationEmail({
-      order: {
-        id: session.id,
-        customerEmail: session.customer_details?.email ?? null
-      },
-      purchases: relatedPurchases
-    });
-  } catch (err) {
-    console.error("\u{1F4E7} Email send error (ignored):", err);
-  }
-  console.log("\u2705 Order fulfilled:", session.id);
+  console.log("Order fulfilled:", session.id);
   return res.json({ received: true });
 }
 
@@ -826,12 +725,12 @@ var stripe_webhook_route_default = router7;
 
 // server/routers/checkout.success.ts
 import { Router as Router10 } from "express";
-import { eq as eq11 } from "drizzle-orm";
+import { eq as eq10 } from "drizzle-orm";
 var router8 = Router10();
 router8.get("/success/:sessionId", async (req, res) => {
   try {
     const sessionId = req.params.sessionId;
-    const order = await db.select().from(orders).where(eq11(orders.id, sessionId)).limit(1).then((r) => r[0]);
+    const order = await db.select().from(orders).where(eq10(orders.id, sessionId)).limit(1).then((r) => r[0]);
     if (!order) return res.status(404).json({ error: "Order not found" });
     let type = "unknown";
     try {
@@ -841,7 +740,7 @@ router8.get("/success/:sessionId", async (req, res) => {
     }
     const deliveries = [];
     if (type === "digital") {
-      const dl = await db.select().from(downloads).where(eq11(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
+      const dl = await db.select().from(downloads).where(eq10(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
       deliveries.push({
         purchaseId: dl?.id ?? 0,
         productKey: order.productKey,
@@ -870,7 +769,7 @@ var checkout_success_default = router8;
 // server/routers/checkout.ts
 import { Router as Router11 } from "express";
 import Stripe2 from "stripe";
-import { eq as eq12 } from "drizzle-orm";
+import { eq as eq11 } from "drizzle-orm";
 var router9 = Router11();
 var stripe2 = new Stripe2(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20"
@@ -896,7 +795,7 @@ router9.post("/create", async (req, res) => {
       active: products.active,
       overrideName: productOverrides.overrideName,
       overridePrice: productOverrides.overridePrice
-    }).from(products).leftJoin(productOverrides, eq12(productOverrides.productId, products.id)).where(eq12(products.id, id)).limit(1);
+    }).from(products).leftJoin(productOverrides, eq11(productOverrides.productId, products.id)).where(eq11(products.id, id)).limit(1);
     const p = rows[0];
     if (!p || p.active === false) {
       return res.status(404).json({ error: "Product not found or inactive" });
@@ -908,7 +807,7 @@ router9.post("/create", async (req, res) => {
       return res.status(400).json({ error: "Invalid product price" });
     }
     const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
-    const session2 = await stripe2.checkout.sessions.create({
+    const session = await stripe2.checkout.sessions.create({
       customer_email: typeof email === "string" ? email : void 0,
       mode: "payment",
       line_items: [
@@ -930,7 +829,7 @@ router9.post("/create", async (req, res) => {
       success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendBaseUrl}/cancel`
     });
-    return res.json({ url: session2.url });
+    return res.json({ url: session.url });
   } catch (err) {
     console.error("CHECKOUT ERROR", err);
     return res.status(500).json({ error: "Failed to create checkout session" });

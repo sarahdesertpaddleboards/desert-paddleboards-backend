@@ -19,7 +19,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
-  if (!sig) return res.status(400).send("Missing Stripe signature");
+  if (!sig) {
+    return res.status(400).send("Missing Stripe signature");
+  }
 
   let event: Stripe.Event;
 
@@ -30,119 +32,50 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error("❌ Invalid Stripe signature", err);
+    console.error("Invalid Stripe signature", err);
     return res.status(400).send("Invalid signature");
   }
 
+  // Only handle completed checkout sessions
+  if (event.type !== "checkout.session.completed") {
+    return res.json({ received: true });
+  }
 
-  
+  const session = event.data.object as Stripe.Checkout.Session;
+  const metadata = session.metadata || {};
+  const productKey = metadata.productKey;
+  const productType = metadata.type;
 
-// 2) CREATE ORDER RECORD (canonical)
-await db.insert(orders).values({
-id: session.id,
-productKey,
-amount: session.amount_total ?? 0,
-currency: session.currency ?? "usd",
-status: "fulfilled",
-customerEmail: session.customer_details?.email ?? null,
-stripeEventId: event.id,
-raw: JSON.stringify(session),
-fulfilledAt: new Date(),
-});
+  if (!productKey) {
+    console.error("Missing productKey in metadata");
+    return res.status(400).json({ error: "Missing productKey" });
+  }
 
-// 3) PURCHASE RECORD (idempotent by stripe_session_id unique)
-const existingPurchase = await db
-.select()
-.from(purchases)
-.where(eq(purchases.stripeSessionId, session.id))
-.limit(1)
-.then(r => r[0]);
+  // Insert purchase record
+  await db.insert(purchases).values({
+    stripeSessionId: session.id,
+    productKey,
+    amount: session.amount_total ?? 0,
+    currency: session.currency ?? "usd",
+    customerEmail: session.customer_details?.email ?? null,
+  });
 
-if (!existingPurchase) {
-await db.insert(purchases).values({
-  stripeSessionId: session.id,
-  productKey,
-  amount: session.amount_total ?? 0,
-  currency: session.currency ?? "usd",
-  customerEmail: session.customer_details?.email ?? null,
-});
-}
+  // DIGITAL DOWNLOAD
+  if (productType === "digital") {
+    const token = crypto.randomBytes(24).toString("hex");
 
-    // ---------------------------------------------------------
-    // 3. FULFILLMENT LOGIC BASED ON PRODUCT TYPE
-    // ---------------------------------------------------------
+    await db.insert(downloads).values({
+      orderId: session.id,
+      productKey,
+      token,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+    });
 
-    // DIGITAL PRODUCT → issue secure download token
-    if (productType === "digital") {
-      const token = crypto.randomBytes(24).toString("hex");
-    
-      await db.insert(downloads).values({
-        orderId: session.id,
-        productKey,
-        token,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-      });
-    
-      console.log("💾 Digital download token created:", token);
-    }
-    // GIFT CERTIFICATE → store details + generate code
-    if (productType === "gift") {
-      const code = crypto.randomBytes(6).toString("hex").toUpperCase();
+    console.log("Digital token created:", token);
+  }
 
-      await db.insert(giftCertificates).values({
-        purchaseId: purchaseRecord.id,
-        productId: productKey, // productKey is string; adjust schema if needed
-        recipientName: metadata.recipientName || null,
-        recipientEmail: metadata.recipientEmail || null,
-        message: metadata.message || null,
-        generatedCode: code,
-      });
+  console.log("Order fulfilled:", session.id);
 
-      console.log("🎁 Gift certificate created with code:", code);
-    }
-
-    // MERCH → store shipping address
-    if (productType === "merch") {
-      await db.insert(shippingAddresses).values({
-        purchaseId: purchaseRecord.id,
-        productId: productKey,
-        fullName: metadata.shipping_fullName ?? "",
-        addressLine1: metadata.shipping_address1 ?? "",
-        addressLine2: metadata.shipping_address2 ?? "",
-        city: metadata.shipping_city ?? "",
-        state: metadata.shipping_state ?? "",
-        postalCode: metadata.shipping_postal ?? "",
-        country: metadata.shipping_country ?? "",
-      });
-
-      console.log("📦 Shipping address stored for merch order");
-    }
-
-    // ---------------------------------------------------------
-    // 4. EMAIL CONFIRMATION (NON-BLOCKING)
-    // ---------------------------------------------------------
-    try {
-      const relatedPurchases = await db
-        .select()
-        .from(purchases)
-        .where(eq(purchases.stripeSessionId, session.id));
-
-      await sendOrderConfirmationEmail({
-        order: {
-          id: session.id,
-          customerEmail: session.customer_details?.email ?? null,
-        },
-        purchases: relatedPurchases,
-      });
-    } catch (err) {
-      console.error("📧 Email send error (ignored):", err);
-    }
-
-    console.log("✅ Order fulfilled:", session.id);
-  
-
-  // 5. ALWAYS ACKNOWLEDGE
   return res.json({ received: true });
-
 }
 
