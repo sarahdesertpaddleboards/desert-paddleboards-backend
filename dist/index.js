@@ -729,39 +729,22 @@ import { eq as eq10 } from "drizzle-orm";
 var router8 = Router10();
 router8.get("/success/:sessionId", async (req, res) => {
   try {
-    const sessionId = req.params.sessionId;
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: "Missing sessionId" });
+    }
     const order = await db.select().from(orders).where(eq10(orders.id, sessionId)).limit(1).then((r) => r[0]);
-    if (!order) return res.status(404).json({ error: "Order not found" });
-    let type = "unknown";
-    try {
-      const raw = JSON.parse(order.raw);
-      type = raw?.metadata?.type || "unknown";
-    } catch {
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
     }
-    const deliveries = [];
-    if (type === "digital") {
-      const dl = await db.select().from(downloads).where(eq10(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
-      deliveries.push({
-        purchaseId: dl?.id ?? 0,
-        productKey: order.productKey,
-        type: "digital"
-      });
-    } else if (type === "gift") {
-      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "gift" });
-    } else if (type === "merch") {
-      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "merch" });
-    } else if (type === "booking") {
-      deliveries.push({ purchaseId: 0, productKey: order.productKey, type: "booking" });
-    }
+    const download = await db.select().from(downloads).where(eq10(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
     return res.json({
-      sessionId: order.id,
-      status: order.status,
-      customerEmail: order.customerEmail ?? null,
-      deliveries
+      order,
+      downloadToken: download?.token ?? null
     });
   } catch (err) {
-    console.error("CHECKOUT SUCCESS ERROR", err);
-    return res.status(500).json({ error: "Failed to load order" });
+    console.error("Checkout success error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 var checkout_success_default = router8;
