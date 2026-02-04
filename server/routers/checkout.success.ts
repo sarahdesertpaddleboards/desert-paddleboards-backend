@@ -26,9 +26,13 @@ router.get("/success/:sessionId", async (req, res) => {
       .limit(1)
       .then(r => r[0]);
 
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
+      if (!order) {
+        return res.json({
+          order: null,
+          downloadToken: null,
+          pending: true,
+        });
+      }
 
     // If digital product, fetch download token
     const download = await db
