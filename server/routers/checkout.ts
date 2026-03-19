@@ -11,31 +11,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
-/**
- * POST /checkout/create
- * Backwards compatible with existing frontend payload:
- *   { productId: number, quantity: number, email: string, name: string }
- *
- * We look up the product in DB to get:
- * - unit amount (price in cents)
- * - productKey and type for webhook metadata
- */
-router.post("/create", async (req, res) => {
+async function createCheckout(req: any, res: any) {
   try {
-    const { productId, quantity, email } = req.body ?? {};
-
-    const id = Number(productId);
-    if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: "productId must be a number" });
-    }
+    const { productId, productKey, quantity, email } = req.body ?? {};
 
     const qty = Number(quantity ?? 1);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
       return res.status(400).json({ error: "quantity must be 1-20" });
     }
 
-    // Look up product + optional overrides
-    const rows = await db
+    const query = db
       .select({
         id: products.id,
         productKey: products.productKey,
@@ -48,9 +33,19 @@ router.post("/create", async (req, res) => {
         overridePrice: productOverrides.overridePrice,
       })
       .from(products)
-      .leftJoin(productOverrides, eq(productOverrides.productId, products.id))
-      .where(eq(products.id, id))
-      .limit(1);
+      .leftJoin(productOverrides, eq(productOverrides.productId, products.id));
+
+    let rows;
+
+    if (typeof productKey === "string" && productKey.trim()) {
+      rows = await query.where(eq(products.productKey, productKey.trim())).limit(1);
+    } else {
+      const id = Number(productId);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ error: "productId or productKey is required" });
+      }
+      rows = await query.where(eq(products.id, id)).limit(1);
+    }
 
     const p = rows[0];
 
@@ -59,20 +54,18 @@ router.post("/create", async (req, res) => {
     }
 
     const itemName = (p.overrideName ?? p.name) || `Product ${p.productKey}`;
-    const unitAmount = Number(p.overridePrice ?? p.price); // cents
+    const unitAmount = Number(p.overridePrice ?? p.price);
     const currency = (p.currency ?? "usd").toLowerCase();
 
     if (!Number.isInteger(unitAmount) || unitAmount < 50) {
       return res.status(400).json({ error: "Invalid product price" });
     }
 
-    // For local fallback, assume Vite port 5173
     const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
 
     const session = await stripe.checkout.sessions.create({
       customer_email: typeof email === "string" ? email : undefined,
       mode: "payment",
-
       line_items: [
         {
           price_data: {
@@ -83,13 +76,10 @@ router.post("/create", async (req, res) => {
           quantity: qty,
         },
       ],
-
-      // CRITICAL: your stripe-webhook.ts expects these
       metadata: {
         productKey: p.productKey,
-        type: p.type, // "digital" | "gift" | "merch" | later "class_session"
+        type: p.type,
       },
-
       success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendBaseUrl}/cancel`,
     });
@@ -99,6 +89,9 @@ router.post("/create", async (req, res) => {
     console.error("CHECKOUT ERROR", err);
     return res.status(500).json({ error: "Failed to create checkout session" });
   }
-});
+}
+
+router.post("/", createCheckout);
+router.post("/create", createCheckout);
 
 export default router;
