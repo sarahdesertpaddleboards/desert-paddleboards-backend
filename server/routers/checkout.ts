@@ -79,6 +79,7 @@ async function createCheckout(req: any, res: any) {
       metadata: {
         productKey: p.productKey,
         type: p.type,
+        ...(sessionId ? { sessionId: String(sessionId) } : {}),
       },
       success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendBaseUrl}/cancel`,
