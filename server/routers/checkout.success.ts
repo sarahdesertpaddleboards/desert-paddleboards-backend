@@ -45,6 +45,7 @@ router.get("/success/:sessionId", async (req, res) => {
     return res.json({
       order,
       downloadToken: download?.token ?? null,
+      sessionId: (order as any)?.sessionId ?? null,
     });
 
   } catch (err) {
