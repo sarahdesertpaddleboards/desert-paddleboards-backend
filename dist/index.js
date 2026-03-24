@@ -615,42 +615,83 @@ router5.get("/", async (_req, res) => {
     res.status(500).json({ error: "Failed to load sessions" });
   }
 });
+router5.get("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid session id" });
+    }
+    const row = await db.select({
+      id: classSessions.id,
+      classProductId: classSessions.classProductId,
+      startTime: classSessions.startTime,
+      endTime: classSessions.endTime,
+      seatsTotal: classSessions.seatsTotal,
+      seatsAvailable: classSessions.seatsAvailable,
+      venueId: classSessions.venueId,
+      venueName: venues.name,
+      venueCity: venues.city,
+      venueState: venues.state,
+      venueSlug: venues.slug,
+      className: classProducts.name,
+      productKey: classProducts.productKey
+    }).from(classSessions).leftJoin(venues, eq8(classSessions.venueId, venues.id)).leftJoin(classProducts, eq8(classSessions.classProductId, classProducts.id)).where(eq8(classSessions.id, id)).limit(1).then((r) => r[0]);
+    if (!row) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    res.json(row);
+  } catch (err) {
+    console.error("SESSIONS PUBLIC GET ERROR", err);
+    res.status(500).json({ error: "Failed to load session" });
+  }
+});
 var sessions_public_default = router5;
 
 // server/routers/sessions.admin.ts
 import { Router as Router8 } from "express";
-import { eq as eq9 } from "drizzle-orm";
+import { desc as desc2, eq as eq9 } from "drizzle-orm";
 var router6 = Router8();
-router6.get("/", requireAdmin, async (_req, res) => {
-  const list = await db.select().from(classSessions);
-  res.json(list);
+router6.get("/", async (_req, res) => {
+  const rows = await db.select({
+    id: classSessions.id,
+    classProductId: classSessions.classProductId,
+    venueId: classSessions.venueId,
+    startTime: classSessions.startTime,
+    endTime: classSessions.endTime,
+    seatsTotal: classSessions.seatsTotal,
+    seatsAvailable: classSessions.seatsAvailable,
+    venueName: venues.name,
+    venueCity: venues.city,
+    venueState: venues.state
+  }).from(classSessions).leftJoin(venues, eq9(classSessions.venueId, venues.id)).orderBy(desc2(classSessions.startTime));
+  res.json(rows);
 });
-router6.post("/", requireAdmin, async (req, res) => {
-  await db.insert(classSessions).values(req.body);
-  const bodyAny = req.body;
-  if (bodyAny?.id) {
-    const [row] = await db.select().from(classSessions).where(eq9(classSessions.id, Number(bodyAny.id))).limit(1);
-    return res.json(row ?? null);
-  }
-  const rows = await db.select().from(classSessions);
-  const last = rows[rows.length - 1] ?? null;
-  res.json(last);
+router6.post("/", async (req, res) => {
+  const body = req.body;
+  const [created] = await db.insert(classSessions).values({
+    classProductId: body.classProductId,
+    venueId: body.venueId ?? null,
+    startTime: body.startTime,
+    endTime: body.endTime,
+    seatsTotal: body.seatsTotal,
+    seatsAvailable: body.seatsAvailable
+  }).returning();
+  res.json(created);
 });
-router6.patch("/:id", requireAdmin, async (req, res) => {
+router6.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
-  await db.update(classSessions).set(req.body).where(eq9(classSessions.id, id));
-  const [row] = await db.select().from(classSessions).where(eq9(classSessions.id, id)).limit(1);
-  if (!row) return res.status(404).json({ error: "Not found" });
-  res.json(row);
+  const body = req.body;
+  const [updated] = await db.update(classSessions).set({
+    venueId: body.venueId,
+    startTime: body.startTime,
+    endTime: body.endTime,
+    seatsTotal: body.seatsTotal,
+    seatsAvailable: body.seatsAvailable
+  }).where(eq9(classSessions.id, id)).returning();
+  res.json(updated);
 });
-router6.delete("/:id", requireAdmin, async (req, res) => {
+router6.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
   await db.delete(classSessions).where(eq9(classSessions.id, id));
   res.json({ ok: true });
 });
@@ -735,12 +776,17 @@ router8.get("/success/:sessionId", async (req, res) => {
     }
     const order = await db.select().from(orders).where(eq10(orders.id, sessionId)).limit(1).then((r) => r[0]);
     if (!order) {
-      return res.status(404).json({ error: "Order not found" });
+      return res.json({
+        order: null,
+        downloadToken: null,
+        pending: true
+      });
     }
     const download = await db.select().from(downloads).where(eq10(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
     return res.json({
       order,
-      downloadToken: download?.token ?? null
+      downloadToken: download?.token ?? null,
+      sessionId: order?.sessionId ?? null
     });
   } catch (err) {
     console.error("Checkout success error:", err);
@@ -757,18 +803,14 @@ var router9 = Router11();
 var stripe2 = new Stripe2(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20"
 });
-router9.post("/create", async (req, res) => {
+async function createCheckout(req, res) {
   try {
-    const { productId, quantity, email } = req.body ?? {};
-    const id = Number(productId);
-    if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: "productId must be a number" });
-    }
+    const { productId, productKey, quantity, email, sessionId } = req.body ?? {};
     const qty = Number(quantity ?? 1);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
       return res.status(400).json({ error: "quantity must be 1-20" });
     }
-    const rows = await db.select({
+    const query = db.select({
       id: products.id,
       productKey: products.productKey,
       type: products.type,
@@ -778,7 +820,17 @@ router9.post("/create", async (req, res) => {
       active: products.active,
       overrideName: productOverrides.overrideName,
       overridePrice: productOverrides.overridePrice
-    }).from(products).leftJoin(productOverrides, eq11(productOverrides.productId, products.id)).where(eq11(products.id, id)).limit(1);
+    }).from(products).leftJoin(productOverrides, eq11(productOverrides.productId, products.id));
+    let rows;
+    if (typeof productKey === "string" && productKey.trim()) {
+      rows = await query.where(eq11(products.productKey, productKey.trim())).limit(1);
+    } else {
+      const id = Number(productId);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ error: "productId or productKey is required" });
+      }
+      rows = await query.where(eq11(products.id, id)).limit(1);
+    }
     const p = rows[0];
     if (!p || p.active === false) {
       return res.status(404).json({ error: "Product not found or inactive" });
@@ -803,11 +855,10 @@ router9.post("/create", async (req, res) => {
           quantity: qty
         }
       ],
-      // CRITICAL: your stripe-webhook.ts expects these
       metadata: {
         productKey: p.productKey,
-        type: p.type
-        // "digital" | "gift" | "merch" | later "class_session"
+        type: p.type,
+        ...sessionId ? { sessionId: String(sessionId) } : {}
       },
       success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendBaseUrl}/cancel`
@@ -817,7 +868,9 @@ router9.post("/create", async (req, res) => {
     console.error("CHECKOUT ERROR", err);
     return res.status(500).json({ error: "Failed to create checkout session" });
   }
-});
+}
+router9.post("/", createCheckout);
+router9.post("/create", createCheckout);
 var checkout_default = router9;
 
 // server/_core/index.ts

@@ -13,7 +13,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 async function createCheckout(req: any, res: any) {
   try {
-    const { productId, productKey, quantity, email } = req.body ?? {};
+    const { productId, productKey, quantity, email, sessionId } = req.body ?? {};
 
     const qty = Number(quantity ?? 1);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
