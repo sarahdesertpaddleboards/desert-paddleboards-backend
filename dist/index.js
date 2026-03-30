@@ -774,8 +774,8 @@ router8.get("/success/:sessionId", async (req, res) => {
     if (!sessionId) {
       return res.status(400).json({ error: "Missing sessionId" });
     }
-    const order = await db.select().from(orders).where(eq10(orders.id, sessionId)).limit(1).then((r) => r[0]);
-    if (!order) {
+    const purchase = await db.select().from(purchases).where(eq10(purchases.stripeSessionId, sessionId)).limit(1).then((r) => r[0]);
+    if (!purchase) {
       return res.json({
         order: null,
         downloadToken: null,
@@ -784,9 +784,16 @@ router8.get("/success/:sessionId", async (req, res) => {
     }
     const download = await db.select().from(downloads).where(eq10(downloads.orderId, sessionId)).limit(1).then((r) => r[0]);
     return res.json({
-      order,
+      order: {
+        id: purchase.stripeSessionId,
+        productKey: purchase.productKey,
+        amount: purchase.amount,
+        currency: purchase.currency,
+        status: "paid",
+        customerEmail: purchase.customerEmail
+      },
       downloadToken: download?.token ?? null,
-      sessionId: order?.sessionId ?? null
+      sessionId: null
     });
   } catch (err) {
     console.error("Checkout success error:", err);

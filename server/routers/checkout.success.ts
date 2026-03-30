@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import { orders, downloads } from "../db/schema";
+import { purchases, downloads } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 /**
  * GET /checkout/success/:sessionId
  *
- * Returns order + download token (if digital)
+ * Returns purchase + download token (if digital)
  */
 router.get("/success/:sessionId", async (req, res) => {
   try {
@@ -18,36 +18,40 @@ router.get("/success/:sessionId", async (req, res) => {
       return res.status(400).json({ error: "Missing sessionId" });
     }
 
-    // Fetch order
-    const order = await db
+    const purchase = await db
       .select()
-      .from(orders)
-      .where(eq(orders.id, sessionId))
+      .from(purchases)
+      .where(eq(purchases.stripeSessionId, sessionId))
       .limit(1)
-      .then(r => r[0]);
+      .then((r) => r[0]);
 
-      if (!order) {
-        return res.json({
-          order: null,
-          downloadToken: null,
-          pending: true,
-        });
-      }
+    if (!purchase) {
+      return res.json({
+        order: null,
+        downloadToken: null,
+        pending: true,
+      });
+    }
 
-    // If digital product, fetch download token
     const download = await db
       .select()
       .from(downloads)
       .where(eq(downloads.orderId, sessionId))
       .limit(1)
-      .then(r => r[0]);
+      .then((r) => r[0]);
 
     return res.json({
-      order,
+      order: {
+        id: purchase.stripeSessionId,
+        productKey: purchase.productKey,
+        amount: purchase.amount,
+        currency: purchase.currency,
+        status: "paid",
+        customerEmail: purchase.customerEmail,
+      },
       downloadToken: download?.token ?? null,
-      sessionId: (order as any)?.sessionId ?? null,
+      sessionId: null,
     });
-
   } catch (err) {
     console.error("Checkout success error:", err);
     return res.status(500).json({ error: "Server error" });
