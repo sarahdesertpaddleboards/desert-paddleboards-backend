@@ -63,6 +63,7 @@ async function startServer() {
   // Checkout routes
   app.use("/checkout", checkout);
   app.use("/checkout", checkoutSuccess);
+  app.use("/checkout", checkoutCalendar);
 
   // HEALTH CHECK
   app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -72,3 +73,4 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+ch(console.error);
