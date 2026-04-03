@@ -9,8 +9,24 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
-function formatIcsDate(value: Date) {
+function formatUtcStamp(value: Date) {
   return value.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function formatZonedLocal(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(value);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}${get("month")}${get("day")}T${get("hour")}${get("minute")}${get("second")}`;
 }
 
 function escapeIcsText(value: string) {
@@ -43,6 +59,7 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
         venueName: venues.name,
         venueCity: venues.city,
         venueState: venues.state,
+        venueTimezone: venues.timezone,
         className: classProducts.name,
       })
       .from(classSessions)
@@ -58,6 +75,7 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
 
     const start = new Date(bookedSession.startTime);
     const end = new Date(bookedSession.endTime);
+    const venueTimezone = bookedSession.venueTimezone || "America/Phoenix";
 
     const summary = bookedSession.className || "Desert Paddleboards Booking";
     const location = [bookedSession.venueName, bookedSession.venueCity, bookedSession.venueState]
@@ -65,7 +83,7 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
       .join(", ");
     const description = `Your Desert Paddleboards booking is confirmed for ${summary}.`;
     const uid = `${stripeSessionId}@desertpaddleboards.vercel.app`;
-    const dtstamp = formatIcsDate(new Date());
+    const dtstamp = formatUtcStamp(new Date());
 
     const ics = [
       "BEGIN:VCALENDAR",
@@ -76,8 +94,8 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
       "BEGIN:VEVENT",
       `UID:${uid}`,
       `DTSTAMP:${dtstamp}`,
-      `DTSTART:${formatIcsDate(start)}`,
-      `DTEND:${formatIcsDate(end)}`,
+      `DTSTART;TZID=${venueTimezone}:${formatZonedLocal(start, venueTimezone)}`,
+      `DTEND;TZID=${venueTimezone}:${formatZonedLocal(end, venueTimezone)}`,
       `SUMMARY:${escapeIcsText(summary)}`,
       `DESCRIPTION:${escapeIcsText(description)}`,
       `LOCATION:${escapeIcsText(location)}`,
