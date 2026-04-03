@@ -1,14 +1,18 @@
 import { Router } from "express";
+import Stripe from "stripe";
 import { db } from "../db";
-import { purchases, downloads } from "../db/schema";
+import { purchases, downloads, classSessions, classProducts, venues } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
 /**
  * GET /checkout/success/:sessionId
  *
- * Returns purchase + download token (if digital)
+ * Returns purchase + download token (if digital) + booking session details (if present)
  */
 router.get("/success/:sessionId", async (req, res) => {
   try {
@@ -40,6 +44,40 @@ router.get("/success/:sessionId", async (req, res) => {
       .limit(1)
       .then((r) => r[0]);
 
+    let bookedSession: any = null;
+
+    try {
+      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+      const bookedSessionId = Number(stripeSession.metadata?.sessionId || "");
+
+      if (Number.isFinite(bookedSessionId)) {
+        bookedSession = await db
+          .select({
+            id: classSessions.id,
+            classProductId: classSessions.classProductId,
+            startTime: classSessions.startTime,
+            endTime: classSessions.endTime,
+            seatsTotal: classSessions.seatsTotal,
+            seatsAvailable: classSessions.seatsAvailable,
+            venueId: classSessions.venueId,
+            venueName: venues.name,
+            venueCity: venues.city,
+            venueState: venues.state,
+            venueSlug: venues.slug,
+            className: classProducts.name,
+            productKey: classProducts.productKey,
+          })
+          .from(classSessions)
+          .leftJoin(venues, eq(classSessions.venueId, venues.id))
+          .leftJoin(classProducts, eq(classSessions.classProductId, classProducts.id))
+          .where(eq(classSessions.id, bookedSessionId))
+          .limit(1)
+          .then((r) => r[0] || null);
+      }
+    } catch (err) {
+      console.error("Checkout success session lookup failed:", err);
+    }
+
     return res.json({
       order: {
         id: purchase.stripeSessionId,
@@ -50,7 +88,8 @@ router.get("/success/:sessionId", async (req, res) => {
         customerEmail: purchase.customerEmail,
       },
       downloadToken: download?.token ?? null,
-      sessionId: null,
+      sessionId: bookedSession?.id ? String(bookedSession.id) : null,
+      bookedSession,
     });
   } catch (err) {
     console.error("Checkout success error:", err);
