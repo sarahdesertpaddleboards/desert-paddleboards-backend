@@ -37,6 +37,59 @@ function escapeIcsText(value: string) {
     .replace(/;/g, "\\;");
 }
 
+function timezoneBlock(timeZone: string) {
+  if (timeZone === "America/Phoenix") {
+    return [
+      "BEGIN:VTIMEZONE",
+      "TZID:America/Phoenix",
+      "X-LIC-LOCATION:America/Phoenix",
+      "BEGIN:STANDARD",
+      "TZOFFSETFROM:-0700",
+      "TZOFFSETTO:-0700",
+      "TZNAME:MST",
+      "DTSTART:19700101T000000",
+      "END:STANDARD",
+      "END:VTIMEZONE",
+    ].join("\r\n");
+  }
+
+  if (timeZone === "America/Los_Angeles") {
+    return [
+      "BEGIN:VTIMEZONE",
+      "TZID:America/Los_Angeles",
+      "X-LIC-LOCATION:America/Los_Angeles",
+      "BEGIN:DAYLIGHT",
+      "TZOFFSETFROM:-0800",
+      "TZOFFSETTO:-0700",
+      "TZNAME:PDT",
+      "DTSTART:19700308T020000",
+      "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+      "END:DAYLIGHT",
+      "BEGIN:STANDARD",
+      "TZOFFSETFROM:-0700",
+      "TZOFFSETTO:-0800",
+      "TZNAME:PST",
+      "DTSTART:19701101T020000",
+      "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+      "END:STANDARD",
+      "END:VTIMEZONE",
+    ].join("\r\n");
+  }
+
+  return [
+    "BEGIN:VTIMEZONE",
+    `TZID:${timeZone}`,
+    `X-LIC-LOCATION:${timeZone}`,
+    "BEGIN:STANDARD",
+    "TZOFFSETFROM:+0000",
+    "TZOFFSETTO:+0000",
+    "TZNAME:UTC",
+    "DTSTART:19700101T000000",
+    "END:STANDARD",
+    "END:VTIMEZONE",
+  ].join("\r\n");
+}
+
 router.get("/calendar/:sessionId.ics", async (req, res) => {
   try {
     const stripeSessionId = req.params.sessionId;
@@ -91,6 +144,7 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
       "PRODID:-//Desert Paddleboards//Booking Calendar//EN",
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH",
+      timezoneBlock(venueTimezone),
       "BEGIN:VEVENT",
       `UID:${uid}`,
       `DTSTAMP:${dtstamp}`,
