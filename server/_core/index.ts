@@ -16,12 +16,9 @@ import classesAdmin from "../routers/classes.admin";
 import sessionsPublic from "../routers/sessions.public";
 import sessionsAdmin from "../routers/sessions.admin";
 
-// ✅ FIXED PATH (match the other router imports)
 import stripeWebhookRouter from "../routers/stripe.webhook.route";
-
-// ✅ New: checkout success route (we'll create this file next)
 import checkoutSuccess from "../routers/checkout.success";
-
+import checkoutCalendar from "../routers/checkout.calendar";
 import checkout from "../routers/checkout";
 
 console.log("🔥 CLEAN EXPRESS API INITIALIZING…");
@@ -34,7 +31,7 @@ async function startServer() {
 
   app.use(cookieParser());
 
-  // ✅ Stripe webhook must be BEFORE express.json()
+  // Stripe webhook must be BEFORE express.json()
   app.use("/api", stripeWebhookRouter);
 
   // Normal parsers for everything else
@@ -73,4 +70,3 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
-ch(console.error);
