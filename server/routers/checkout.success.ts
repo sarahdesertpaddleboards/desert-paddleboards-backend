@@ -64,6 +64,7 @@ router.get("/success/:sessionId", async (req, res) => {
             venueCity: venues.city,
             venueState: venues.state,
             venueSlug: venues.slug,
+            venueTimezone: venues.timezone,
             className: classProducts.name,
             productKey: classProducts.productKey,
           })
