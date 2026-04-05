@@ -171,11 +171,71 @@ const seedStoreProducts: SeedStoreProduct[] = [
   },
 ];
 
-function daysFromNow(days: number, hour: number, minute = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  date.setHours(hour, minute, 0, 0);
-  return date;
+function zonedParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    second: get("second"),
+  };
+}
+
+function localTimeInZoneToDate(
+  timeZone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute = 0,
+  second = 0
+) {
+  let utcGuess = Date.UTC(year, month - 1, day, hour, minute, second);
+
+  for (let i = 0; i < 5; i++) {
+    const current = zonedParts(new Date(utcGuess), timeZone);
+    const desired = Date.UTC(year, month - 1, day, hour, minute, second);
+    const actual = Date.UTC(
+      current.year,
+      current.month - 1,
+      current.day,
+      current.hour,
+      current.minute,
+      current.second
+    );
+    const diff = desired - actual;
+    utcGuess += diff;
+    if (diff === 0) break;
+  }
+
+  return new Date(utcGuess);
+}
+
+function daysFromNowInZone(timeZone: string, days: number, hour: number, minute = 0) {
+  const now = new Date();
+  const localNow = zonedParts(now, timeZone);
+  const baseUtc = Date.UTC(localNow.year, localNow.month - 1, localNow.day, 12, 0, 0);
+  const targetBase = new Date(baseUtc + days * 24 * 60 * 60 * 1000);
+  const target = {
+    year: targetBase.getUTCFullYear(),
+    month: targetBase.getUTCMonth() + 1,
+    day: targetBase.getUTCDate(),
+  };
+
+  return localTimeInZoneToDate(timeZone, target.year, target.month, target.day, hour, minute, 0);
 }
 
 function plusMinutes(date: Date, minutes: number) {
@@ -186,64 +246,64 @@ const seedSessions: SeedSession[] = [
   {
     classProductKey: "floating-soundbath-resort",
     venueSlug: "civana-resort-spa-scottsdale",
-    startTime: daysFromNow(2, 18, 30),
-    endTime: plusMinutes(daysFromNow(2, 18, 30), 90),
+    startTime: daysFromNowInZone("America/Phoenix", 2, 18, 30),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 2, 18, 30), 90),
     seatsTotal: 12,
     seatsAvailable: 9,
   },
   {
     classProductKey: "floating-soundbath-resort",
     venueSlug: "civana-resort-spa-scottsdale",
-    startTime: daysFromNow(5, 18, 30),
-    endTime: plusMinutes(daysFromNow(5, 18, 30), 90),
+    startTime: daysFromNowInZone("America/Phoenix", 5, 18, 30),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 5, 18, 30), 90),
     seatsTotal: 12,
     seatsAvailable: 6,
   },
   {
     classProductKey: "floating-soundbath-resort",
     venueSlug: "civana-resort-spa-scottsdale",
-    startTime: daysFromNow(9, 18, 30),
-    endTime: plusMinutes(daysFromNow(9, 18, 30), 90),
+    startTime: daysFromNowInZone("America/Phoenix", 9, 18, 30),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 9, 18, 30), 90),
     seatsTotal: 12,
     seatsAvailable: 11,
   },
   {
     classProductKey: "floating-soundbath-public",
     venueSlug: "eldorado-aquatic-fitness-center-scottsdale",
-    startTime: daysFromNow(3, 19, 0),
-    endTime: plusMinutes(daysFromNow(3, 19, 0), 75),
+    startTime: daysFromNowInZone("America/Phoenix", 3, 19, 0),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 3, 19, 0), 75),
     seatsTotal: 14,
     seatsAvailable: 12,
   },
   {
     classProductKey: "floating-soundbath-public",
     venueSlug: "eldorado-aquatic-fitness-center-scottsdale",
-    startTime: daysFromNow(7, 19, 0),
-    endTime: plusMinutes(daysFromNow(7, 19, 0), 75),
+    startTime: daysFromNowInZone("America/Phoenix", 7, 19, 0),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 7, 19, 0), 75),
     seatsTotal: 14,
     seatsAvailable: 8,
   },
   {
     classProductKey: "floating-soundbath-public",
     venueSlug: "eldorado-aquatic-fitness-center-scottsdale",
-    startTime: daysFromNow(12, 19, 0),
-    endTime: plusMinutes(daysFromNow(12, 19, 0), 75),
+    startTime: daysFromNowInZone("America/Phoenix", 12, 19, 0),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 12, 19, 0), 75),
     seatsTotal: 14,
     seatsAvailable: 13,
   },
   {
     classProductKey: "private-soundbath-event",
     venueSlug: "private-events-phoenix-metro",
-    startTime: daysFromNow(6, 17, 30),
-    endTime: plusMinutes(daysFromNow(6, 17, 30), 120),
+    startTime: daysFromNowInZone("America/Phoenix", 6, 17, 30),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 6, 17, 30), 120),
     seatsTotal: 16,
     seatsAvailable: 16,
   },
   {
     classProductKey: "private-soundbath-event",
     venueSlug: "private-events-phoenix-metro",
-    startTime: daysFromNow(13, 17, 30),
-    endTime: plusMinutes(daysFromNow(13, 17, 30), 120),
+    startTime: daysFromNowInZone("America/Phoenix", 13, 17, 30),
+    endTime: plusMinutes(daysFromNowInZone("America/Phoenix", 13, 17, 30), 120),
     seatsTotal: 16,
     seatsAvailable: 10,
   },
