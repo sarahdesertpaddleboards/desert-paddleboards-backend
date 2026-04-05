@@ -190,3 +190,15 @@ export const classSessions = mysqlTable("class_sessions", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ---------------------------------------------------------
+// BOOKING DETAILS (post-checkout group info / special requests)
+// ---------------------------------------------------------
+export const bookingDetails = mysqlTable("booking_details", {
+  id: int("id").primaryKey().autoincrement(),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }).notNull().unique(),
+  specialRequests: text("special_requests"),
+  participantsJson: text("participants_json"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
