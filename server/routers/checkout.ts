@@ -2,7 +2,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { db } from "../db";
-import { products, productOverrides, classProducts } from "../db/schema";
+import { products, productOverrides, classProducts, classSessions } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -124,6 +124,29 @@ async function createCheckout(req: any, res: any) {
       return res.status(404).json({ error: "Product not found or inactive" });
     }
 
+    if (sessionId) {
+      const bookedSessionId = Number(sessionId);
+      if (Number.isFinite(bookedSessionId)) {
+        const sessionRow = await db
+          .select({
+            id: classSessions.id,
+            seatsAvailable: classSessions.seatsAvailable,
+          })
+          .from(classSessions)
+          .where(eq(classSessions.id, bookedSessionId))
+          .limit(1)
+          .then((r) => r[0]);
+
+        if (!sessionRow) {
+          return res.status(404).json({ error: "Session not found" });
+        }
+
+        if (qty > sessionRow.seatsAvailable) {
+          return res.status(400).json({ error: `Only ${sessionRow.seatsAvailable} spots remain for this session` });
+        }
+      }
+    }
+
     const itemName = p.name || `Product ${p.productKey}`;
     const unitAmount = Number(p.price);
     const currency = (p.currency ?? "usd").toLowerCase();
@@ -150,6 +173,7 @@ async function createCheckout(req: any, res: any) {
       metadata: {
         productKey: p.productKey,
         type: p.type,
+        quantity: String(qty),
         ...(sessionId ? { sessionId: String(sessionId) } : {}),
       },
       success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
