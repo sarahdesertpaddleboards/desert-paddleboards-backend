@@ -19,6 +19,7 @@ import sessionsAdmin from "../routers/sessions.admin";
 import stripeWebhookRouter from "../routers/stripe.webhook.route";
 import checkoutSuccess from "../routers/checkout.success";
 import checkoutCalendar from "../routers/checkout.calendar";
+import checkoutBookingDetails from "../routers/checkout.booking-details";
 import checkout from "../routers/checkout";
 
 console.log("🔥 CLEAN EXPRESS API INITIALIZING…");
@@ -71,4 +72,3 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
-r().catch(console.error);
