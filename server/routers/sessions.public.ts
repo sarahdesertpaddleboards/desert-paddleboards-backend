@@ -21,6 +21,7 @@ router.get("/", async (_req, res) => {
         venueCity: venues.city,
         venueState: venues.state,
         venueSlug: venues.slug,
+        venueTimezone: venues.timezone,
       })
       .from(classSessions)
       .leftJoin(venues, eq(classSessions.venueId, venues.id))
@@ -54,6 +55,7 @@ router.get("/:id", async (req, res) => {
         venueCity: venues.city,
         venueState: venues.state,
         venueSlug: venues.slug,
+        venueTimezone: venues.timezone,
         className: classProducts.name,
         productKey: classProducts.productKey,
       })
