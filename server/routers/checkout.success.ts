@@ -45,9 +45,11 @@ router.get("/success/:sessionId", async (req, res) => {
       .then((r) => r[0]);
 
     let bookedSession: any = null;
+    let bookedQuantity = 1;
 
     try {
       const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+      bookedQuantity = Number(stripeSession.metadata?.quantity || "1") || 1;
       const bookedSessionId = Number(stripeSession.metadata?.sessionId || "");
 
       if (Number.isFinite(bookedSessionId)) {
@@ -90,6 +92,7 @@ router.get("/success/:sessionId", async (req, res) => {
       },
       downloadToken: download?.token ?? null,
       sessionId: bookedSession?.id ? String(bookedSession.id) : null,
+      bookedQuantity,
       bookedSession,
     });
   } catch (err) {
