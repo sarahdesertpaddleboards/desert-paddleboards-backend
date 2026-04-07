@@ -81,45 +81,34 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
   // GIFT CERTIFICATE
   if (productType === "gift") {
-    const productRows = await db
-      .select({ id: products.id })
-      .from(products)
-      .where(eq(products.productKey, productKey))
-      .limit(1);
-
-    const product = productRows[0];
-
-    if (product) {
-      let code = generateGiftCode();
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const existing = await db
-          .select({ id: giftCertificates.id })
-          .from(giftCertificates)
-          .where(eq(giftCertificates.code, code))
-          .limit(1);
-        if (!existing[0]) break;
-        code = generateGiftCode();
-      }
-
-      const amount = session.amount_total ?? 0;
-
-      await db.insert(giftCertificates).values({
-        code,
-        productId: product.id,
-        originalAmount: amount,
-        remainingAmount: amount,
-        currency: session.currency ?? "usd",
-        purchaserEmail: session.customer_details?.email ?? null,
-        stripeSessionId: session.id,
-        status: "active",
-        redeemed: false,
-        updatedAt: new Date(),
-      });
-
-      console.log("Gift certificate issued:", code);
-    } else {
-      console.warn("Gift product not found for issuance:", productKey);
+    let code = generateGiftCode();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const existing = await db
+        .select({ id: giftCertificates.id })
+        .from(giftCertificates)
+        .where(eq(giftCertificates.generatedCode, code))
+        .limit(1);
+      if (!existing[0]) break;
+      code = generateGiftCode();
     }
+
+    const amount = session.amount_total ?? 0;
+
+    await db.insert(giftCertificates).values({
+      purchaseId,
+      productKey,
+      generatedCode: code,
+      originalAmount: amount,
+      remainingAmount: amount,
+      currency: session.currency ?? "usd",
+      purchaserEmail: session.customer_details?.email ?? null,
+      stripeSessionId: session.id,
+      status: "active",
+      redeemed: false,
+      updatedAt: new Date(),
+    });
+
+    console.log("Gift certificate issued:", code);
   }
 
   console.log("Order fulfilled:", session.id);
