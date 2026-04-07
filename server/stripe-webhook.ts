@@ -8,6 +8,7 @@ import {
   giftCertificates,
   shippingAddresses,
   productOverrides,
+  products,
 } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { sendOrderConfirmationEmail } from "./_core/email";
@@ -16,6 +17,10 @@ import crypto from "crypto";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 });
+
+function generateGiftCode() {
+  return `BWE-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+}
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
@@ -72,6 +77,49 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     });
 
     console.log("Digital token created:", token);
+  }
+
+  // GIFT CERTIFICATE
+  if (productType === "gift") {
+    const productRows = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.productKey, productKey))
+      .limit(1);
+
+    const product = productRows[0];
+
+    if (product) {
+      let code = generateGiftCode();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const existing = await db
+          .select({ id: giftCertificates.id })
+          .from(giftCertificates)
+          .where(eq(giftCertificates.code, code))
+          .limit(1);
+        if (!existing[0]) break;
+        code = generateGiftCode();
+      }
+
+      const amount = session.amount_total ?? 0;
+
+      await db.insert(giftCertificates).values({
+        code,
+        productId: product.id,
+        originalAmount: amount,
+        remainingAmount: amount,
+        currency: session.currency ?? "usd",
+        purchaserEmail: session.customer_details?.email ?? null,
+        stripeSessionId: session.id,
+        status: "active",
+        redeemed: false,
+        updatedAt: new Date(),
+      });
+
+      console.log("Gift certificate issued:", code);
+    } else {
+      console.warn("Gift product not found for issuance:", productKey);
+    }
   }
 
   console.log("Order fulfilled:", session.id);

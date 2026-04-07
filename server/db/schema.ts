@@ -96,9 +96,18 @@ export const giftCertificates = mysqlTable("gift_certificates", {
   id: int("id").primaryKey().autoincrement(),
   code: varchar("code", { length: 100 }).notNull().unique(),
   productId: int("product_id").notNull(),
-  amount: int("amount").notNull(),
+  originalAmount: int("original_amount").notNull(),
+  remainingAmount: int("remaining_amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("usd"),
+  purchaserEmail: varchar("purchaser_email", { length: 255 }),
+  recipientName: varchar("recipient_name", { length: 255 }),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  message: text("message"),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("active"),
   redeemed: boolean("redeemed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // ---------------------------------------------------------
