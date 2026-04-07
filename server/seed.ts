@@ -150,9 +150,9 @@ const seedStoreProducts: SeedStoreProduct[] = [
   {
     productKey: "desert-paddleboards-gift-certificate",
     type: "gift",
-    name: "Desert Paddleboards Gift Certificate",
+    name: "Blue Wave Experiences Gift Certificate",
     description:
-      "Give someone a floating soundbath or wellness experience with a flexible Desert Paddleboards gift certificate.",
+      "Give someone a floating soundbath or wellness experience with a flexible Blue Wave Experiences gift certificate.",
     price: 7500,
     currency: "USD",
     imageUrl: "https://desertpaddleboards.com/images/hero-main.jpeg",
@@ -161,9 +161,9 @@ const seedStoreProducts: SeedStoreProduct[] = [
   {
     productKey: "desert-paddleboards-branded-paddleboard",
     type: "physical",
-    name: "Desert Paddleboards Branded Paddleboard",
+    name: "Blue Wave Experiences Branded Paddleboard",
     description:
-      "A branded Desert Paddleboards paddleboard for customers who want the full on-water lifestyle experience.",
+      "A branded Blue Wave Experiences paddleboard for customers who want the full on-water lifestyle experience.",
     price: 16000,
     currency: "USD",
     imageUrl: "https://desertpaddleboards.com/images/hero-main.jpeg",
