@@ -92,7 +92,7 @@ export async function sendOrderConfirmationEmail(args: {
       </p>
 
       <p>
-        — Desert Paddleboards
+        — Blue Wave Experiences
       </p>
     </div>
   `;
@@ -101,9 +101,9 @@ export async function sendOrderConfirmationEmail(args: {
    * Send email
    */
   await resend.emails.send({
-    from: "Desert Paddleboards <info@desertpaddleboards.com>",
+    from: "Blue Wave Experiences <info@desertpaddleboards.com>",
     to: order.customerEmail,
-    subject: "Your Desert Paddleboards purchase is ready",
+    subject: "Your Blue Wave Experiences purchase is ready",
     html,
   });
 
