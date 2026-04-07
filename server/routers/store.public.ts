@@ -27,12 +27,13 @@ router.get("/", async (_req, res) => {
 
         // Optional overrides
         overrideName: productOverrides.overrideName,
+        overrideDescription: productOverrides.overrideDescription,
         overridePrice: productOverrides.overridePrice,
       })
       .from(products)
       .leftJoin(productOverrides, eq(productOverrides.productId, products.id));
 
-    // Apply overrides into the returned "name" and "price"
+    // Apply overrides into the returned customer-facing fields
     const items = rows
       .filter((r) => r.active !== false) // active can be null/true/false depending on driver; treat false as inactive
       .map((r) => ({
@@ -40,7 +41,7 @@ router.get("/", async (_req, res) => {
         productKey: r.productKey,
         type: r.type,
         name: r.overrideName ?? r.name,
-        description: r.description,
+        description: r.overrideDescription ?? r.description,
         price: r.overridePrice ?? r.price,
         currency: r.currency ?? "usd",
         imageUrl: r.imageUrl,
@@ -75,6 +76,7 @@ router.get("/:key", async (req, res) => {
         active: products.active,
 
         overrideName: productOverrides.overrideName,
+        overrideDescription: productOverrides.overrideDescription,
         overridePrice: productOverrides.overridePrice,
       })
       .from(products)
@@ -93,7 +95,7 @@ router.get("/:key", async (req, res) => {
       productKey: r.productKey,
       type: r.type,
       name: r.overrideName ?? r.name,
-      description: r.description,
+      description: r.overrideDescription ?? r.description,
       price: r.overridePrice ?? r.price,
       currency: r.currency ?? "usd",
       imageUrl: r.imageUrl,
