@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { db } from "../db";
-import { purchases, downloads, classSessions, classProducts, venues } from "../db/schema";
+import { purchases, downloads, classSessions, classProducts, venues, products, giftCertificates } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -43,6 +43,22 @@ router.get("/success/:sessionId", async (req, res) => {
       .where(eq(downloads.orderId, sessionId))
       .limit(1)
       .then((r) => r[0]);
+
+    const purchasedProduct = await db
+      .select()
+      .from(products)
+      .where(eq(products.productKey, purchase.productKey))
+      .limit(1)
+      .then((r) => r[0] || null);
+
+    const giftCertificate = purchasedProduct?.type === "gift"
+      ? await db
+          .select()
+          .from(giftCertificates)
+          .where(eq(giftCertificates.stripeSessionId, sessionId))
+          .limit(1)
+          .then((r) => r[0] || null)
+      : null;
 
     let bookedSession: any = null;
     let bookedQuantity = 1;
@@ -94,6 +110,18 @@ router.get("/success/:sessionId", async (req, res) => {
       sessionId: bookedSession?.id ? String(bookedSession.id) : null,
       bookedQuantity,
       bookedSession,
+      giftCertificate: giftCertificate
+        ? {
+            code: giftCertificate.generatedCode,
+            originalAmount: giftCertificate.originalAmount,
+            remainingAmount: giftCertificate.remainingAmount,
+            currency: giftCertificate.currency,
+            recipientName: giftCertificate.recipientName,
+            recipientEmail: giftCertificate.recipientEmail,
+            message: giftCertificate.message,
+            status: giftCertificate.status,
+          }
+        : null,
     });
   } catch (err) {
     console.error("Checkout success error:", err);
