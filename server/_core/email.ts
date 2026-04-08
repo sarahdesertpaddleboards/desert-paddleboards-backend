@@ -1,111 +1,78 @@
 import { Resend } from "resend";
 
-/**
- * Single Resend client for the whole backend
- */
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
-/**
- * Types kept intentionally small and explicit.
- * These mirror what already exists in your DB.
- */
-type Order = {
-  id: string;
-  customerEmail?: string | null;
+type GiftCertificateEmailPayload = {
+  code: string;
+  amount?: number | null;
+  currency?: string | null;
 };
 
-type Purchase = {
-  id: number;
+type SendOrderConfirmationEmailArgs = {
+  to: string;
   productKey: string;
+  downloadToken?: string | null;
+  giftCertificate?: GiftCertificateEmailPayload | null;
 };
 
-/**
- * ============================================================
- * ORDER CONFIRMATION EMAIL
- * ============================================================
- *
- * This function:
- * - Sends ONE email per order
- * - Lists what was purchased
- * - Includes delivery links where applicable
- *
- * IMPORTANT RULES:
- * - No DB writes
- * - No Stripe calls
- * - No assumptions about frontend
- */
-export async function sendOrderConfirmationEmail(args: {
-  order: Order;
-  purchases: Purchase[];
-}) {
-  const { order, purchases } = args;
+function formatMoney(amount?: number | null, currency?: string | null) {
+  if (typeof amount !== "number") return null;
+  return `${(amount / 100).toFixed(2)} ${String(currency || "usd").toUpperCase()}`;
+}
 
-  // Safety guard: never try to send without an email
-  if (!order.customerEmail) {
-    console.warn(
-      "EMAIL: Order has no customer email, skipping",
-      order.id
-    );
+export async function sendOrderConfirmationEmail({
+  to,
+  productKey,
+  downloadToken,
+  giftCertificate,
+}: SendOrderConfirmationEmailArgs) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY missing, skipping email send");
     return;
   }
 
-  /**
-   * Build delivery lines
-   * We do NOT embed files or secrets.
-   * We ONLY point to backend delivery endpoints.
-   */
-  const deliveryLines = purchases.map(purchase => {
-    return `
-      <li>
-        <strong>${purchase.productKey}</strong><br/>
-        <a href="${process.env.PUBLIC_API_BASE_URL}/downloads/${purchase.id}">
-          Download your purchase
-        </a>
-      </li>
-    `;
-  });
+  const isDigital = Boolean(downloadToken);
+  const isGift = Boolean(giftCertificate?.code);
 
-  /**
-   * Very simple, reliable email HTML.
-   * Styling can come later.
-   */
+  const subject = isGift
+    ? "Your Blue Wave Experiences gift certificate is ready"
+    : "Your Blue Wave Experiences purchase is ready";
+
+  const moneyLabel = formatMoney(giftCertificate?.amount, giftCertificate?.currency);
+
   const html = `
-    <div style="font-family: system-ui, sans-serif; line-height: 1.6;">
-      <h2>Thank you for your purchase 🌊</h2>
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0 auto; padding: 24px;">
+      <h1 style="margin: 0 0 16px; font-size: 28px;">Thanks for your purchase</h1>
+      <p style="margin: 0 0 16px;">We’ve confirmed your order for <strong>${productKey}</strong>.</p>
 
-      <p>
-        Your order has been successfully processed.
-      </p>
+      ${isGift ? `
+        <div style="margin: 24px 0; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px; background: #f8fafc;">
+          <h2 style="margin: 0 0 12px; font-size: 20px;">Your gift certificate code</h2>
+          <p style="margin: 0 0 12px; color: #4b5563;">Share this code with the recipient so they can redeem it later.</p>
+          <div style="font-size: 30px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px;">${giftCertificate?.code}</div>
+          ${moneyLabel ? `<p style="margin: 0; color: #4b5563;">Value: <strong>${moneyLabel}</strong></p>` : ""}
+        </div>
+      ` : ""}
 
-      <p>
-        <strong>Order ID:</strong><br/>
-        ${order.id}
-      </p>
+      ${isDigital ? `
+        <div style="margin: 24px 0; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px; background: #f8fafc;">
+          <h2 style="margin: 0 0 12px; font-size: 20px;">Your digital access</h2>
+          <p style="margin: 0 0 12px; color: #4b5563;">Use the link below to access your purchase.</p>
+          <p style="margin: 0;"><a href="${process.env.PUBLIC_APP_URL || ""}/download/${downloadToken}" style="color: #2563eb;">Download your purchase</a></p>
+        </div>
+      ` : ""}
 
-      <h3>Your items</h3>
-      <ul>
-        ${deliveryLines.join("")}
-      </ul>
-
-      <p style="margin-top: 24px;">
-        If you have any issues, just reply to this email.
-      </p>
-
-      <p>
-        — Blue Wave Experiences
-      </p>
+      <p style="margin-top: 24px; color: #4b5563;">If you have any issues, just reply to this email and we’ll help.</p>
+      <p style="margin-top: 24px;">Blue Wave Experiences</p>
     </div>
   `;
 
-  /**
-   * Send email
-   */
   await resend.emails.send({
     from: "Blue Wave Experiences <info@desertpaddleboards.com>",
-    to: order.customerEmail,
-    subject: "Your Blue Wave Experiences purchase is ready",
+    to,
+    subject,
     html,
   });
-
-  console.log("EMAIL: Order confirmation sent", order.id);
 }
