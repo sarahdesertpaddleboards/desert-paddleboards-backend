@@ -45,8 +45,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   const metadata = session.metadata || {};
   const productKey = metadata.productKey;
   const productType = metadata.type;
-  const giftCode = metadata.giftCode?.trim() || "";
-  const giftAmountApplied = Number(metadata.giftAmountApplied || 0);
+  const redeemedGiftCode = metadata.giftCode?.trim() || "";
+  const redeemedGiftAmountApplied = Number(metadata.giftAmountApplied || 0);
   const customerEmail = session.customer_details?.email ?? null;
 
   if (!productKey) {
@@ -65,9 +65,9 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   const purchaseId = Number((insertedPurchase as any)?.[0]?.insertId || (insertedPurchase as any)?.insertId || 0);
 
   let downloadToken: string | null = null;
-  let giftCode: string | null = null;
-  let giftAmount: number | null = null;
-  let giftCurrency: string | null = null;
+  let issuedGiftCode: string | null = null;
+  let issuedGiftAmount: number | null = null;
+  let issuedGiftCurrency: string | null = null;
 
   if (productType === "digital") {
     const token = crypto.randomBytes(24).toString("hex");
@@ -112,23 +112,23 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       updatedAt: new Date(),
     });
 
-    giftCode = code;
-    giftAmount = amount;
-    giftCurrency = currency;
+    issuedGiftCode = code;
+    issuedGiftAmount = amount;
+    issuedGiftCurrency = currency;
     console.log("Gift certificate issued:", code);
   }
 
-  if (giftCode && giftAmountApplied > 0) {
+  if (redeemedGiftCode && redeemedGiftAmountApplied > 0) {
     const existingGift = await db
       .select()
       .from(giftCertificates)
-      .where(eq(giftCertificates.generatedCode, giftCode))
+      .where(eq(giftCertificates.generatedCode, redeemedGiftCode))
       .limit(1)
       .then((r) => r[0] || null);
 
     if (existingGift) {
       const currentRemaining = Number(existingGift.remainingAmount ?? 0);
-      const nextRemaining = Math.max(0, currentRemaining - giftAmountApplied);
+      const nextRemaining = Math.max(0, currentRemaining - redeemedGiftAmountApplied);
       await db
         .update(giftCertificates)
         .set({
@@ -139,9 +139,9 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         })
         .where(eq(giftCertificates.id, existingGift.id));
 
-      console.log("Gift certificate redeemed:", giftCode, giftAmountApplied);
+      console.log("Gift certificate redeemed:", redeemedGiftCode, redeemedGiftAmountApplied);
     } else {
-      console.warn("Gift certificate not found for redemption:", giftCode);
+      console.warn("Gift certificate not found for redemption:", redeemedGiftCode);
     }
   }
 
@@ -151,11 +151,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         to: customerEmail,
         productKey,
         downloadToken,
-        giftCertificate: giftCode
+        giftCertificate: issuedGiftCode
           ? {
-              code: giftCode,
-              amount: giftAmount,
-              currency: giftCurrency,
+              code: issuedGiftCode,
+              amount: issuedGiftAmount,
+              currency: issuedGiftCurrency,
             }
           : null,
       });
