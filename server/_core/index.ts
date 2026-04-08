@@ -6,6 +6,7 @@ import { createServer } from "http";
 
 import { adminAuthRouter } from "../routers/admin-auth";
 import { adminOrdersRouter } from "../routers/admin-orders";
+import { adminGiftCertificatesRouter } from "../routers/admin-gift-certificates";
 
 import storePublic from "../routers/store.public";
 import storeAdmin from "../routers/store.admin";
@@ -49,6 +50,7 @@ async function startServer() {
   // ADMIN
   app.use("/admin", adminAuthRouter);
   app.use("/admin/orders", adminOrdersRouter);
+  app.use("/admin/gift-certificates", adminGiftCertificatesRouter);
   app.use("/admin/store/products", storeAdmin);
   app.use("/admin/classes/products", classesAdmin);
   app.use("/admin/classes/sessions", sessionsAdmin);
