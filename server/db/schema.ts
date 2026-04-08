@@ -42,6 +42,7 @@ export const productOverrides = mysqlTable("product_overrides", {
   productId: int("product_id").notNull(),
   overrideName: varchar("override_name", { length: 255 }),
   overrideDescription: text("override_description"),
+  digitalObjectKey: varchar("digital_object_key", { length: 255 }),
   overridePrice: int("override_price"),
 });
 
