@@ -127,5 +127,10 @@ export async function createAdminSession(
  * 🧹 CLEAR ADMIN SESSION COOKIE
  */
 export function clearAdminSession(res: Response) {
-  res.clearCookie(COOKIE_NAME, { path: "/" });
+  res.clearCookie(COOKIE_NAME, {
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
 }

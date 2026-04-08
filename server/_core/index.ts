@@ -40,9 +40,23 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  const allowedOrigins = [
+    "http://localhost:5173",
+    "https://desertpaddleboards.vercel.app",
+    ...(process.env.FRONTEND_BASE_URL ? [process.env.FRONTEND_BASE_URL] : []),
+    ...(process.env.CORS_ALLOWED_ORIGINS
+      ? process.env.CORS_ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+      : []),
+  ];
+
   app.use(
     cors({
-      origin: ["http://localhost:5173", "https://desertpaddleboards.vercel.app"],
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+      },
       credentials: true,
     })
   );
