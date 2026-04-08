@@ -2,7 +2,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { db } from "../db";
-import { products, productOverrides, classProducts, classSessions } from "../db/schema";
+import { products, productOverrides, classProducts, classSessions, giftCertificates } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -105,9 +105,83 @@ async function findCheckoutProduct(productId: unknown, productKey: unknown): Pro
   };
 }
 
+async function previewGiftCode(giftCode: string, totalAmount: number) {
+  const normalized = giftCode.trim().toUpperCase();
+  if (!normalized) return null;
+
+  const cert = await db
+    .select()
+    .from(giftCertificates)
+    .where(eq(giftCertificates.generatedCode, normalized))
+    .limit(1)
+    .then((r) => r[0] || null);
+
+  if (!cert) {
+    return { valid: false, error: "Gift code not found" } as const;
+  }
+
+  if (cert.status && cert.status !== "active") {
+    return { valid: false, error: "Gift code is not active" } as const;
+  }
+
+  const remaining = Number(cert.remainingAmount ?? 0);
+  if (!Number.isFinite(remaining) || remaining <= 0 || cert.redeemed) {
+    return { valid: false, error: "Gift code has no remaining balance" } as const;
+  }
+
+  const amountApplied = Math.min(remaining, totalAmount);
+  const payableAmount = Math.max(0, totalAmount - amountApplied);
+
+  return {
+    valid: true,
+    code: normalized,
+    originalAmount: totalAmount,
+    amountApplied,
+    payableAmount,
+    remainingBalanceAfterPurchase: remaining - amountApplied,
+    currency: cert.currency ?? "usd",
+  } as const;
+}
+
+router.post("/gift-code/preview", async (req, res) => {
+  try {
+    const { productId, productKey, quantity, giftCode } = req.body ?? {};
+
+    const qty = Number(quantity ?? 1);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
+      return res.status(400).json({ error: "quantity must be 1-20" });
+    }
+
+    if (typeof giftCode !== "string" || !giftCode.trim()) {
+      return res.status(400).json({ error: "giftCode is required" });
+    }
+
+    const p = await findCheckoutProduct(productId, productKey);
+    if (!p || p.active === false) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const totalAmount = Number(p.price) * qty;
+    const preview = await previewGiftCode(giftCode, totalAmount);
+
+    if (!preview) {
+      return res.status(400).json({ error: "Unable to preview gift code" });
+    }
+
+    if (!preview.valid) {
+      return res.status(400).json({ error: preview.error });
+    }
+
+    return res.json(preview);
+  } catch (err) {
+    console.error("GIFT PREVIEW ERROR", err);
+    return res.status(500).json({ error: "Failed to preview gift code" });
+  }
+});
+
 async function createCheckout(req: any, res: any) {
   try {
-    const { productId, productKey, quantity, email, sessionId } = req.body ?? {};
+    const { productId, productKey, quantity, email, sessionId, giftCode } = req.body ?? {};
 
     const qty = Number(quantity ?? 1);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
@@ -155,6 +229,25 @@ async function createCheckout(req: any, res: any) {
       return res.status(400).json({ error: "Invalid product price" });
     }
 
+    const originalAmount = unitAmount * qty;
+    let amountApplied = 0;
+    let payableAmount = originalAmount;
+    let normalizedGiftCode: string | null = null;
+
+    if (typeof giftCode === "string" && giftCode.trim()) {
+      const preview = await previewGiftCode(giftCode, originalAmount);
+      if (!preview || !preview.valid) {
+        return res.status(400).json({ error: preview?.error || "Invalid gift code" });
+      }
+      normalizedGiftCode = preview.code;
+      amountApplied = preview.amountApplied;
+      payableAmount = preview.payableAmount;
+    }
+
+    if (payableAmount < 50) {
+      return res.status(400).json({ error: "Gift certificates cannot fully cover checkout yet. Please use a code with a smaller balance or add another item." });
+    }
+
     const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
 
     const session = await stripe.checkout.sessions.create({
@@ -164,30 +257,37 @@ async function createCheckout(req: any, res: any) {
         {
           price_data: {
             currency,
-            unit_amount: unitAmount,
-            product_data: { name: itemName },
+            unit_amount: payableAmount,
+            product_data: {
+              name: normalizedGiftCode ? `${itemName} (gift applied)` : itemName,
+            },
           },
-          quantity: qty,
+          quantity: 1,
         },
       ],
+      success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendBaseUrl}/buy/${p.productKey}`,
       metadata: {
+        productId: String(p.id),
         productKey: p.productKey,
         type: p.type,
         quantity: String(qty),
-        ...(sessionId ? { sessionId: String(sessionId) } : {}),
+        email: typeof email === "string" ? email : "",
+        sessionId: sessionId ? String(sessionId) : "",
+        giftCode: normalizedGiftCode || "",
+        giftAmountApplied: String(amountApplied),
+        originalAmount: String(originalAmount),
       },
-      success_url: `${frontendBaseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${frontendBaseUrl}/cancel`,
     });
 
-    return res.json({ url: session.url });
+    res.json({ url: session.url });
   } catch (err) {
     console.error("CHECKOUT ERROR", err);
-    return res.status(500).json({ error: "Failed to create checkout session" });
+    res.status(500).json({ error: "Failed to create checkout session" });
   }
 }
 
-router.post("/", createCheckout);
-router.post("/create", createCheckout);
+router.post("/create-checkout-session", createCheckout);
+router.post("/create-session", createCheckout);
 
 export default router;
