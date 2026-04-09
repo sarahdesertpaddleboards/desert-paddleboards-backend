@@ -3,18 +3,27 @@ import { Router } from "express";
 import { db } from "../db";
 import { productOverrides } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../_core/requireAdmin";
+import { sdk } from "../_core/sdk";
+
+async function requireModernAdmin(req: any, res: any, next: any) {
+  try {
+    await sdk.requireAdmin(req);
+    next();
+  } catch {
+    res.status(401).json({ error: "Unauthorized" });
+  }
+}
 
 const router = Router();
 
 // GET ALL
-router.get("/", requireAdmin, async (_req, res) => {
+router.get("/", requireModernAdmin, async (_req, res) => {
   const items = await db.select().from(productOverrides);
   res.json(items);
 });
 
 // CREATE
-router.post("/", requireAdmin, async (req, res) => {
+router.post("/", requireModernAdmin, async (req, res) => {
   try {
     const data = req.body as any;
 
@@ -42,7 +51,7 @@ router.post("/", requireAdmin, async (req, res) => {
 });
 
 // UPDATE
-router.patch("/:id", requireAdmin, async (req, res) => {
+router.patch("/:id", requireModernAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
