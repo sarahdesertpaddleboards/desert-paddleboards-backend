@@ -81,7 +81,7 @@ router.patch("/:id", requireModernAdmin, async (req, res) => {
 });
 
 // DELETE
-router.delete("/:id", requireAdmin, async (req, res) => {
+router.delete("/:id", requireModernAdmin, async (req, res) => {
   const id = Number(req.params.id);
 
   if (!Number.isFinite(id)) {
