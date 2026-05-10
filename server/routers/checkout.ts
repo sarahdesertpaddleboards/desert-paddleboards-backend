@@ -140,7 +140,80 @@ async function previewGiftCode(giftCode: string, totalAmount: number) {
     payableAmount,
     remainingBalanceAfterPurchase: remaining - amountApplied,
     currency: cert.currency ?? "usd",
+    fullyCovered: payableAmount === 0,
   } as const;
+}
+
+async function createZeroAmountPurchase(args: {
+  product: CheckoutProduct;
+  email?: string;
+  quantity: number;
+  sessionId?: unknown;
+  giftCode: string;
+  amountApplied: number;
+}) {
+  const stripeSessionId = `gift_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const insertedPurchase = await db.insert(purchases).values({
+    stripeSessionId,
+    productKey: args.product.productKey,
+    amount: 0,
+    currency: (args.product.currency ?? "usd").toLowerCase(),
+    customerEmail: typeof args.email === "string" ? args.email : null,
+  });
+
+  const purchaseId = Number((insertedPurchase as any)?.[0]?.insertId || (insertedPurchase as any)?.insertId || 0);
+
+  const existingGift = await db
+    .select()
+    .from(giftCertificates)
+    .where(eq(giftCertificates.generatedCode, args.giftCode))
+    .limit(1)
+    .then((r) => r[0] || null);
+
+  if (!existingGift) {
+    throw new Error("Gift certificate not found during redemption");
+  }
+
+  const currentRemaining = Number(existingGift.remainingAmount ?? 0);
+  const nextRemaining = Math.max(0, currentRemaining - args.amountApplied);
+
+  await db
+    .update(giftCertificates)
+    .set({
+      remainingAmount: nextRemaining,
+      redeemed: nextRemaining <= 0,
+      status: nextRemaining <= 0 ? "redeemed" : "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(giftCertificates.id, existingGift.id));
+
+  if (args.sessionId) {
+    const bookedSessionId = Number(args.sessionId);
+    if (Number.isFinite(bookedSessionId)) {
+      const sessionRow = await db
+        .select({
+          id: classSessions.id,
+          seatsAvailable: classSessions.seatsAvailable,
+        })
+        .from(classSessions)
+        .where(eq(classSessions.id, bookedSessionId))
+        .limit(1)
+        .then((r) => r[0]);
+
+      if (!sessionRow) {
+        throw new Error("Session not found while finalizing gift redemption");
+      }
+
+      const nextSeats = Math.max(0, Number(sessionRow.seatsAvailable) - args.quantity);
+      await db
+        .update(classSessions)
+        .set({ seatsAvailable: nextSeats })
+        .where(eq(classSessions.id, bookedSessionId));
+    }
+  }
+
+  return stripeSessionId;
 }
 
 router.post("/gift-code/preview", async (req, res) => {
@@ -244,11 +317,27 @@ async function createCheckout(req: any, res: any) {
       payableAmount = preview.payableAmount;
     }
 
-    if (payableAmount < 50) {
-      return res.status(400).json({ error: "Gift certificates cannot fully cover checkout yet. Please use a code with a smaller balance or add another item." });
+    const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
+
+    if (normalizedGiftCode && payableAmount === 0) {
+      const zeroAmountSessionId = await createZeroAmountPurchase({
+        product: p,
+        email,
+        quantity: qty,
+        sessionId,
+        giftCode: normalizedGiftCode,
+        amountApplied,
+      });
+
+      return res.json({
+        url: `${frontendBaseUrl}/success?session_id=${encodeURIComponent(zeroAmountSessionId)}`,
+        fullyCoveredByGiftCode: true,
+      });
     }
 
-    const frontendBaseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:5173";
+    if (payableAmount < 50) {
+      return res.status(400).json({ error: "Adjusted checkout total is too low to send through Stripe." });
+    }
 
     const session = await stripe.checkout.sessions.create({
       customer_email: typeof email === "string" ? email : undefined,
