@@ -35,3 +35,8 @@ Backend structure.txt
 dist/
 node_modules/
 dist/
+.DS_Store
+cookies.txt
+railway-cookies.txt
+*-cookies.txt
+dist/
