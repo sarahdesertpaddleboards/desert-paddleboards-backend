@@ -130,18 +130,18 @@ router.get("/calendar/:sessionId.ics", async (req, res) => {
     const end = new Date(bookedSession.endTime);
     const venueTimezone = bookedSession.venueTimezone || "America/Phoenix";
 
-    const summary = bookedSession.className || "Blue Wave Experiences Booking";
+    const summary = bookedSession.className || "Desert Paddleboards Booking";
     const location = [bookedSession.venueName, bookedSession.venueCity, bookedSession.venueState]
       .filter(Boolean)
       .join(", ");
-    const description = `Your Blue Wave Experiences booking is confirmed for ${summary}.`;
+    const description = `Your Desert Paddleboards booking is confirmed for ${summary}.`;
     const uid = `${stripeSessionId}@desertpaddleboards.vercel.app`;
     const dtstamp = formatUtcStamp(new Date());
 
     const ics = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Blue Wave Experiences//Booking Calendar//EN",
+      "PRODID:-//Desert Paddleboards//Booking Calendar//EN",
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH",
       timezoneBlock(venueTimezone),

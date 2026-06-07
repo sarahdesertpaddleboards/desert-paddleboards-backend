@@ -37,8 +37,8 @@ export async function sendOrderConfirmationEmail({
   const isGift = Boolean(giftCertificate?.code);
 
   const subject = isGift
-    ? "Your Blue Wave Experiences gift certificate is ready"
-    : "Your Blue Wave Experiences purchase is ready";
+    ? "Your Desert Paddleboards gift certificate is ready"
+    : "Your Desert Paddleboards purchase is ready";
 
   const moneyLabel = formatMoney(giftCertificate?.amount, giftCertificate?.currency);
 
@@ -65,12 +65,12 @@ export async function sendOrderConfirmationEmail({
       ` : ""}
 
       <p style="margin-top: 24px; color: #4b5563;">If you have any issues, just reply to this email and we’ll help.</p>
-      <p style="margin-top: 24px;">Blue Wave Experiences</p>
+      <p style="margin-top: 24px;">Desert Paddleboards</p>
     </div>
   `;
 
   await resend.emails.send({
-    from: "Blue Wave Experiences <info@desertpaddleboards.com>",
+    from: "Desert Paddleboards <info@desertpaddleboards.com>",
     to,
     subject,
     html,
