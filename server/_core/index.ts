@@ -18,6 +18,8 @@ import classesAdmin from "../routers/classes.admin";
 import sessionsPublic from "../routers/sessions.public";
 import sessionsAdmin from "../routers/sessions.admin";
 
+import experiencesPublic from "../routers/experiences.public";
+
 import stripeWebhookRouter from "../routers/stripe.webhook.route";
 import checkoutSuccess from "../routers/checkout.success";
 import checkoutCalendar from "../routers/checkout.calendar";
@@ -75,6 +77,7 @@ async function startServer() {
   app.use("/store/products", storePublic);
   app.use("/classes/products", classesPublic);
   app.use("/classes/sessions", sessionsPublic);
+  app.use("/experiences", experiencesPublic);
 
   // Checkout routes
   app.use("/checkout", checkout);
