@@ -18,12 +18,10 @@ const router = Router();
 
 const SHORTNAME = "desertpaddleboards";
 
-// FareHarbor item ids for the bookable experiences shown on the site.
-// Keep in sync with the frontend's src/data/locations.ts.
-const ITEM_IDS = [
-  709135, 725981, 728366, 578969, 626146, 636156, 344396, 627535, 648798,
-  146434,
-];
+// Fixed-location venues whose FareHarbor primary_location has no lat/lng, so
+// the coords heuristic below would miss them. Keep in sync with
+// FORCE_LOCATION_IDS in the frontend (locations.ts / generate-seo-data.mjs).
+const FORCE_LOCATION_IDS = new Set<number>([626146]); // Aji Spa
 
 const MONTHS_AHEAD = 2; // current month + this many following months
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -89,12 +87,45 @@ async function fetchItemMonth(
   return out;
 }
 
+/**
+ * Fetch the live FareHarbor item list and return the ids of fixed-location
+ * experiences shown on the site: listed, non-retail, and having coordinates
+ * in their primary_location (or in FORCE_LOCATION_IDS). This means new venues
+ * added in FareHarbor flow into the homepage feed automatically — no hardcoded
+ * id list to drift. Falls back to the force list on any failure.
+ */
+async function fetchLocationItemIds(): Promise<number[]> {
+  try {
+    const url = `https://fareharbor.com/api/v1/companies/${SHORTNAME}/items/`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "DesertPaddleboards-Site/1.0" },
+    });
+    if (!res.ok) throw new Error(`items list HTTP ${res.status}`);
+    const json: any = await res.json();
+    const items: any[] = json?.items ?? [];
+    const ids = items
+      .filter((it) => {
+        if (it?.is_archived || it?.is_private || it?.is_unlisted || it?.is_retail)
+          return false;
+        const pl = it?.primary_location ?? {};
+        const hasCoords =
+          typeof pl.latitude === "number" && typeof pl.longitude === "number";
+        return hasCoords || FORCE_LOCATION_IDS.has(it.pk);
+      })
+      .map((it) => it.pk as number);
+    return ids.length > 0 ? ids : [...FORCE_LOCATION_IDS];
+  } catch {
+    return [...FORCE_LOCATION_IDS];
+  }
+}
+
 async function buildFeed(): Promise<UpcomingSession[]> {
   const now = new Date();
   const months = monthsToFetch(now);
+  const itemIds = await fetchLocationItemIds();
 
   const tasks: Promise<UpcomingSession[]>[] = [];
-  for (const itemId of ITEM_IDS) {
+  for (const itemId of itemIds) {
     for (const { year, month } of months) {
       tasks.push(
         fetchItemMonth(itemId, year, month).catch(() => [] as UpcomingSession[]),
